@@ -1,0 +1,27 @@
+{
+    "name": "Gaba English",
+    "short_name": "Gaba",
+    "start_url": "/",
+    "scope": "/",
+    "display": "standalone",
+    "display_override": ["standalone", "minimal-ui"],
+    "background_color": "#f7f1e8",
+    "theme_color": "#185e68",
+    "orientation": "any",
+    "description": "Klidná mobilní webová aplikace pro každodenní učení anglických slovíček se spaced repetition.",
+    "categories": ["education", "productivity"],
+    "icons": [
+        {
+            "src": "/icons/icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any maskable"
+        },
+        {
+            "src": "/icons/icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any maskable"
+        }
+    ]
+}
