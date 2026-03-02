@@ -24,6 +24,7 @@ import { sampleItems } from './utils/random';
 import { formatRelativeDue, getDuePriority, isCardDue, normalizeCardStat, scheduleCardReview } from './utils/srs';
 import { usePwaInstall } from './hooks/usePwaInstall';
 import { classifyCardTheme } from './utils/themes';
+import { AVAILABLE_THEME_FILTERS, getThemeLabel } from './utils/themes';
 
 const PROGRESS_STORAGE_KEY = 'gaba-progress-v9';
 const BASE_LEVEL_TAG = 'EN-5000';
@@ -517,6 +518,60 @@ function QuickActionCard({ action, onStart }) {
     );
 }
 
+function StartHereCard({ title, subtitle, onPrimary, onSecondary, secondaryLabel }) {
+    return (
+        <section className="surface-card start-card">
+            <div className="section-copy">
+                <span className="eyebrow">Kde začít</span>
+                <h2>{title}</h2>
+                <p>{subtitle}</p>
+            </div>
+
+            <div className="start-card__actions">
+                <button type="button" className="button button--primary" onClick={onPrimary}>
+                    <Play size={18} strokeWidth={2.4} />
+                    Začít teď
+                </button>
+                <button type="button" className="button button--secondary" onClick={onSecondary}>
+                    <ArrowRight size={18} strokeWidth={2.4} />
+                    {secondaryLabel}
+                </button>
+            </div>
+        </section>
+    );
+}
+
+function ThemePathsCard({ themes, selectedThemeId, onSelectTheme, onStartTheme }) {
+    return (
+        <section className="surface-card theme-paths">
+            <div className="section-copy">
+                <h2>Vyber téma</h2>
+                <p>Zvol oblast, kterou chceš trénovat, a spusť krátkou session.</p>
+            </div>
+
+            <div className="theme-paths__grid">
+                {themes.map((theme) => (
+                    <button
+                        key={theme.id}
+                        type="button"
+                        className={`theme-path ${selectedThemeId === theme.id ? 'is-active' : ''}`}
+                        onClick={() => onSelectTheme(theme.id)}
+                    >
+                        <strong>{theme.label}</strong>
+                        <span>{theme.total} slov</span>
+                        <small>{theme.due > 0 ? `${theme.due} k opakování` : `${theme.mastered} umím`}</small>
+                    </button>
+                ))}
+            </div>
+
+            <button type="button" className="button button--secondary theme-paths__start" onClick={() => onStartTheme(selectedThemeId)}>
+                <Sparkles size={17} strokeWidth={2.4} />
+                Učit téma: {getThemeLabel(selectedThemeId)}
+            </button>
+        </section>
+    );
+}
+
 function SideNav({ activeTab, onTabChange, streakDays }) {
     const items = [
         { id: 'home', label: 'Dnes', icon: Home },
@@ -592,6 +647,9 @@ function App() {
     const [notice, setNotice] = useState(null);
     const [reloadToken, setReloadToken] = useState(0);
     const [activeTab, setActiveTab] = useState('home');
+    const [selectedThemeId, setSelectedThemeId] = useState(() =>
+        typeof window !== 'undefined' ? localStorage.getItem('gaba-active-theme') || 'travel' : 'travel'
+    );
     const [theme, setTheme] = useState(() => (typeof window !== 'undefined' ? localStorage.getItem('gaba-theme') || 'system' : 'system'));
 
     const { canInstall, isInstalled, isIos, install } = usePwaInstall();
@@ -606,6 +664,10 @@ function App() {
             document.documentElement.removeAttribute('data-theme');
         }
     }, [theme]);
+
+    useEffect(() => {
+        localStorage.setItem('gaba-active-theme', selectedThemeId);
+    }, [selectedThemeId]);
 
     useEffect(() => {
         const controller = new AbortController();
@@ -794,6 +856,59 @@ function App() {
         return unseen.length ? unseen : baseDeck.cards;
     }, [recommendedBand, baseDeck, cardStats]);
 
+    const themeRows = useMemo(() => {
+        const filterIds = AVAILABLE_THEME_FILTERS.map((item) => item.id).filter((id) => id !== 'all');
+        const rows = filterIds
+            .map((themeId) => {
+                const cards = libraryCards.filter((card) => card.themeId === themeId);
+                if (!cards.length) {
+                    return null;
+                }
+
+                let mastered = 0;
+                let due = 0;
+
+                cards.forEach((card) => {
+                    const stat = cardStats[card.sourceCardId];
+                    if (!stat) {
+                        return;
+                    }
+                    if (stat.lastRating === 'good' || stat.lastRating === 'easy') {
+                        mastered += 1;
+                    }
+                    if (isCardDue(stat)) {
+                        due += 1;
+                    }
+                });
+
+                return {
+                    id: themeId,
+                    label: getThemeLabel(themeId),
+                    total: cards.length,
+                    mastered,
+                    due,
+                    cards,
+                };
+            })
+            .filter(Boolean)
+            .sort((a, b) => b.total - a.total);
+
+        return rows.slice(0, 8);
+    }, [libraryCards, cardStats]);
+
+    const safeThemeId = useMemo(() => {
+        if (themeRows.some((item) => item.id === selectedThemeId)) {
+            return selectedThemeId;
+        }
+        return themeRows[0]?.id || 'general';
+    }, [themeRows, selectedThemeId]);
+
+    useEffect(() => {
+        if (safeThemeId !== selectedThemeId) {
+            setSelectedThemeId(safeThemeId);
+        }
+    }, [safeThemeId, selectedThemeId]);
+
     const masteredTotal = useMemo(
         () => Object.values(cardStats).filter((s) => s.lastRating === 'good' || s.lastRating === 'easy').length,
         [cardStats]
@@ -873,7 +988,7 @@ function App() {
                     ? 'Nejdřív krátký reset: minimum nových slov, víc klidného opakování.'
                     : 'Stačí pár minut a vrátíš to, co se ztrácí.',
                 primaryLabel: 'Spustit opakování',
-                secondaryLabel: hasFatigue ? 'Lehký restart' : 'Nových 8',
+                secondaryLabel: 'Učit vybrané téma',
             };
         }
 
@@ -882,7 +997,7 @@ function App() {
                 title: `Pokračuj v ${recommendedBand.lesson.title}`,
                 subtitle: `${learningStage.title}: jeden jasný další krok v hlavní cestě.`,
                 primaryLabel: `Otevřít ${recommendedBand.lesson.title}`,
-                secondaryLabel: 'Nových 8',
+                secondaryLabel: 'Učit vybrané téma',
             };
         }
 
@@ -890,7 +1005,7 @@ function App() {
             title: 'Začni prvním blokem',
             subtitle: 'První malý krok bez rozptylování.',
             primaryLabel: 'Začít',
-            secondaryLabel: 'Lehký start',
+            secondaryLabel: 'Učit vybrané téma',
         };
     }, [dueCards.length, hasFatigue, recommendedBand, learningStage.title]);
 
@@ -962,6 +1077,41 @@ function App() {
                 Math.min(8, nextStepCards.length),
                 recommendedBand ? `Nových 8 · ${recommendedBand.lesson.title}` : 'Dalších 8 slov',
                 'Krátký krok dopředu v hlavní cestě.'
+            )
+        );
+    };
+
+    const startThemePath = (themeId) => {
+        const row = themeRows.find((item) => item.id === themeId);
+        if (!row || !row.cards.length) {
+            return;
+        }
+
+        const dueInTheme = row.cards
+            .filter((card) => {
+                const stat = cardStats[card.sourceCardId];
+                return stat ? isCardDue(stat) : false;
+            });
+
+        if (dueInTheme.length) {
+            setSessionLesson(
+                buildReviewLesson(
+                    dueInTheme,
+                    Math.min(12, dueInTheme.length),
+                    `Téma: ${row.label}`,
+                    'Nejdřív opakování ve vybraném tématu.'
+                )
+            );
+            return;
+        }
+
+        setSessionLesson(
+            buildFreshLesson(
+                row.cards,
+                Math.min(10, row.cards.length),
+                `Téma: ${row.label}`,
+                'Nová slovíčka jen z vybraného tématu.',
+                'theme'
             )
         );
     };
@@ -1132,35 +1282,27 @@ function App() {
 
                                             {libraryStatus === 'ready' && baseDeck ? (
                                                 <div className="home-layout">
-                                                    <TodayHero
+                                                    <StartHereCard
                                                         title={homeSummary.title}
                                                         subtitle={homeSummary.subtitle}
-                                                        primaryLabel={homeSummary.primaryLabel}
-                                                        secondaryLabel={homeSummary.secondaryLabel}
                                                         onPrimary={startToday}
-                                                        onSecondary={startNextStep}
-                                                        meta={heroMeta}
+                                                        onSecondary={() => startThemePath(safeThemeId)}
+                                                        secondaryLabel={homeSummary.secondaryLabel}
                                                     />
 
-                                                    <JourneyCard progressPercent={globalProgressPercent} bandProgress={bandProgress} />
+                                                    <ThemePathsCard
+                                                        themes={themeRows}
+                                                        selectedThemeId={safeThemeId}
+                                                        onSelectTheme={setSelectedThemeId}
+                                                        onStartTheme={startThemePath}
+                                                    />
+
                                                     <LearningCurveCard
                                                         stage={learningStage}
                                                         curvePoints={learningCurve}
                                                         recentSuccessRate={recentSuccessRate}
                                                         reviewedLastWeek={reviewedLastWeek}
                                                     />
-
-                                                    <section className="surface-card quick-actions-panel">
-                                                        <div className="section-copy">
-                                                            <h2>Rychlé volby</h2>
-                                                            <p>Krátké bloky pro efektivní učení během dne.</p>
-                                                        </div>
-                                                        <div className="quick-actions-grid">
-                                                            {quickActions.map((action) => (
-                                                                <QuickActionCard key={action.id} action={action} onStart={handleStartQuickAction} />
-                                                            ))}
-                                                        </div>
-                                                    </section>
                                                 </div>
                                             ) : null}
                                         </>

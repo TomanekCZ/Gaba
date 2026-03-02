@@ -640,6 +640,62 @@ p {
   gap: 12px;
 }
 
+.start-card {
+  display: grid;
+  gap: 12px;
+}
+
+.start-card__actions {
+  display: grid;
+  gap: 8px;
+}
+
+.theme-paths {
+  display: grid;
+  gap: 12px;
+}
+
+.theme-paths__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.theme-path {
+  text-align: left;
+  border-radius: 14px;
+  border: 1px solid var(--line-soft);
+  background: var(--bg-surface-soft);
+  padding: 11px 10px;
+  display: grid;
+  gap: 4px;
+}
+
+.theme-path strong {
+  font-size: 0.9rem;
+  line-height: 1.1;
+}
+
+.theme-path span {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+}
+
+.theme-path small {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.theme-path.is-active {
+  border-color: color-mix(in oklab, var(--primary) 28%, transparent);
+  background: var(--bg-primary-soft);
+}
+
+.theme-paths__start {
+  width: 100%;
+}
+
 .quick-actions-grid {
   display: grid;
   gap: 10px;
@@ -1625,6 +1681,12 @@ p {
 
 .card-context__translation {
   color: var(--text-primary);
+}
+
+@media (max-width: 380px) {
+  .theme-paths__grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Tablet / iPad */
