@@ -20,6 +20,7 @@ import Settings from './components/Settings';
 import { sampleItems } from './utils/random';
 import { formatRelativeDue, getDuePriority, isCardDue, normalizeCardStat, scheduleCardReview } from './utils/srs';
 import { usePwaInstall } from './hooks/usePwaInstall';
+import { classifyCardTheme } from './utils/themes';
 
 const PROGRESS_STORAGE_KEY = 'gaba-progress-v9';
 const BASE_LEVEL_TAG = 'EN-5000';
@@ -40,7 +41,7 @@ const DEFAULT_PROGRESS = {
 };
 
 function normalizeCard(card, index, lessonId) {
-    return {
+    const normalized = {
         id: card.id || `${lessonId}-card-${index + 1}`,
         en: card.en || '',
         cz: card.cz || '',
@@ -52,6 +53,11 @@ function normalizeCard(card, index, lessonId) {
         contextCz: card.contextCz || card.exampleCz || '',
         tags: Array.isArray(card.tags) ? card.tags : [],
         frequencyTag: card.frequencyTag || null,
+    };
+
+    return {
+        ...normalized,
+        themeId: card.themeId || classifyCardTheme(normalized),
     };
 }
 

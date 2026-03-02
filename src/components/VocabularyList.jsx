@@ -2,6 +2,7 @@ import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, ChevronDown, Circle, Clock3, Search, Volume2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTTS } from '../hooks/useTTS';
+import { AVAILABLE_THEME_FILTERS, getThemeLabel } from '../utils/themes';
 
 function statusForCard(card, cardStats) {
     const stat = cardStats[card.sourceCardId];
@@ -36,6 +37,7 @@ export default function VocabularyList({ cards, cardStats, onMarkCardKnown }) {
     const PAGE_SIZE = 80;
     const [search, setSearch] = useState('');
     const deferredSearch = useDeferredValue(search);
+    const [activeTheme, setActiveTheme] = useState('all');
     const [showMastered, setShowMastered] = useState(() => {
         if (typeof window === 'undefined') {
             return true;
@@ -65,12 +67,13 @@ export default function VocabularyList({ cards, cardStats, onMarkCardKnown }) {
         };
 
         cards.forEach((card) => {
+            const matchesTheme = activeTheme === 'all' || card.themeId === activeTheme;
             const matchesSearch =
                 !normalizedSearch ||
                 card.en.toLowerCase().includes(normalizedSearch) ||
                 card.cz.toLowerCase().includes(normalizedSearch);
 
-            if (!matchesSearch) {
+            if (!matchesTheme || !matchesSearch) {
                 return;
             }
 
@@ -79,7 +82,16 @@ export default function VocabularyList({ cards, cardStats, onMarkCardKnown }) {
         });
 
         return sections;
-    }, [cards, cardStats, deferredSearch]);
+    }, [cards, cardStats, deferredSearch, activeTheme]);
+
+    const themeCounts = useMemo(() => {
+        const counts = { all: cards.length };
+        cards.forEach((card) => {
+            const id = card.themeId || 'general';
+            counts[id] = (counts[id] || 0) + 1;
+        });
+        return counts;
+    }, [cards]);
 
     useEffect(() => {
         setVisibleCountBySection({
@@ -87,7 +99,7 @@ export default function VocabularyList({ cards, cardStats, onMarkCardKnown }) {
             new: PAGE_SIZE,
             mastered: PAGE_SIZE,
         });
-    }, [deferredSearch]);
+    }, [deferredSearch, activeTheme]);
 
     useEffect(() => {
         if (typeof window === 'undefined') {
@@ -134,6 +146,28 @@ export default function VocabularyList({ cards, cardStats, onMarkCardKnown }) {
                 >
                     {showMastered ? 'Skrýt naučené' : 'Zobrazit naučené'}
                 </button>
+                <div className="theme-filters" role="tablist" aria-label="Temata slovicek">
+                    {AVAILABLE_THEME_FILTERS.map((theme) => {
+                        const count = themeCounts[theme.id] || 0;
+                        if (count === 0) {
+                            return null;
+                        }
+
+                        return (
+                            <button
+                                key={theme.id}
+                                type="button"
+                                role="tab"
+                                aria-selected={activeTheme === theme.id}
+                                className={`theme-chip ${activeTheme === theme.id ? 'is-active' : ''}`}
+                                onClick={() => setActiveTheme(theme.id)}
+                            >
+                                <span>{theme.label}</span>
+                                <small>{count}</small>
+                            </button>
+                        );
+                    })}
+                </div>
             </header>
 
             <div className="vocab-sections">
@@ -198,6 +232,7 @@ export default function VocabularyList({ cards, cardStats, onMarkCardKnown }) {
                                                             </button>
                                                         </div>
                                                         <span>{card.cz}</span>
+                                                        <em className="vocab-theme-label">{getThemeLabel(card.themeId)}</em>
                                                     </div>
 
                                                     <div className="vocab-item__actions">
