@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, CheckCircle2, ChevronUp, RotateCcw, Sparkles } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, CheckCircle2, ChevronUp, RotateCcw, Sparkles } from 'lucide-react';
 import { AnimatePresence, motion, useMotionValue, useTransform } from 'framer-motion';
 import Flashcard from './Flashcard';
 
@@ -281,7 +281,7 @@ export default function StudySession({ lesson, onClose, onComplete }) {
                                 <div className="gesture-row">
                                     <GestureButton
                                         icon={RotateCcw}
-                                        label="Znovu"
+                                        label="Nevěděl"
                                         tone="again"
                                         active={gestureIntent === 'again'}
                                         onClick={() => submitRating('again')}
@@ -294,14 +294,21 @@ export default function StudySession({ lesson, onClose, onComplete }) {
                                         onClick={() => submitRating('hard')}
                                     />
                                     <GestureButton
+                                        icon={Check}
+                                        label="Dobré"
+                                        tone="good"
+                                        active={gestureIntent === 'good'}
+                                        onClick={() => submitRating('good')}
+                                    />
+                                    <GestureButton
                                         icon={ArrowRight}
-                                        label="Umím"
+                                        label="Snadné"
                                         tone="easy"
                                         active={gestureIntent === 'easy'}
                                         onClick={() => submitRating('easy')}
                                     />
                                 </div>
-                                <p className="session-caption">doleva znovu · nahoru těžké · doprava umím</p>
+                                <p className="session-caption">doleva nevěděl · nahoru těžké · dobré tlačítkem · doprava snadné</p>
                             </>
                         )}
                     </footer>

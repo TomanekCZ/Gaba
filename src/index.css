@@ -650,6 +650,56 @@ p {
   gap: 8px;
 }
 
+.start-stats {
+  display: grid;
+  gap: 10px;
+}
+
+.start-streak {
+  min-height: 36px;
+  border-radius: 12px;
+  border: 1px solid var(--line-soft);
+  background: var(--bg-surface-soft);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 11px;
+  color: var(--warning);
+}
+
+.start-streak strong {
+  font-size: 0.82rem;
+}
+
+.start-goal {
+  display: grid;
+  gap: 6px;
+}
+
+.start-goal__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.start-goal__bar {
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid var(--line-soft);
+  background: var(--bg-surface-soft);
+}
+
+.start-goal__bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #1f6bff, #18b26b);
+}
+
 .theme-paths {
   display: grid;
   gap: 12px;
@@ -694,6 +744,69 @@ p {
 
 .theme-paths__start {
   width: 100%;
+}
+
+.lessons-screen {
+  display: grid;
+  gap: 12px;
+}
+
+.lesson-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.lesson-card {
+  border-radius: 16px;
+  border: 1px solid var(--line-soft);
+  background: var(--bg-surface-elevated);
+  padding: 13px;
+  display: grid;
+  gap: 9px;
+}
+
+.lesson-card__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lesson-card__badge {
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line-soft);
+  background: var(--bg-primary-soft);
+  color: var(--primary);
+  font-size: 0.68rem;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+}
+
+.lesson-card__head strong {
+  font-size: 1rem;
+  font-family: "Space Grotesk", "Onest", sans-serif;
+}
+
+.lesson-card p {
+  color: var(--text-secondary);
+  font-size: 0.86rem;
+}
+
+.lesson-card__progress {
+  height: 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line-soft);
+  overflow: hidden;
+  background: var(--bg-surface-soft);
+}
+
+.lesson-card__progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #2f8f9c, #cc8953);
 }
 
 .quick-actions-grid {
@@ -876,6 +989,35 @@ p {
   background: var(--bg-primary-soft);
 }
 
+.status-filters {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.status-filters::-webkit-scrollbar {
+  display: none;
+}
+
+.status-chip {
+  min-height: 32px;
+  padding: 0 11px;
+  border-radius: 999px;
+  border: 1px solid var(--line-soft);
+  background: var(--bg-surface-elevated);
+  color: var(--text-secondary);
+  font-size: 0.73rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.status-chip.is-active {
+  color: var(--primary);
+  border-color: color-mix(in oklab, var(--primary) 30%, transparent);
+  background: var(--bg-primary-soft);
+}
+
 .vocab-sections {
   display: grid;
   gap: 10px;
@@ -1004,6 +1146,21 @@ p {
   font-weight: 800;
   letter-spacing: 0.02em;
   color: var(--text-muted);
+}
+
+.vocab-strength {
+  margin-top: 6px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--bg-surface-soft);
+  overflow: hidden;
+}
+
+.vocab-strength span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--warning), var(--success));
 }
 
 .vocab-item__speak {
@@ -1374,7 +1531,7 @@ p {
 
 .gesture-row {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -1409,6 +1566,14 @@ p {
 
 .gesture-button--hard.is-active {
   background: var(--bg-warning-soft);
+}
+
+.gesture-button--good {
+  color: var(--primary);
+}
+
+.gesture-button--good.is-active {
+  background: var(--bg-primary-soft);
 }
 
 .gesture-button--easy {

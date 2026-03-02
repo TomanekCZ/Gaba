@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import {
     Activity,
     ArrowRight,
+    BookText,
     BookOpen,
     CheckCircle2,
     Clock3,
+    Compass,
     Flame,
     GraduationCap,
     Home,
@@ -15,6 +17,7 @@ import {
     Sparkles,
     Target,
     TrendingUp,
+    UserCircle2,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import StudySession from './components/StudySession';
@@ -204,6 +207,19 @@ function buildLearningStage({ masteredRatio, sessionsCompleted, streakDays, rece
         subtitle: 'Budujes prvni navaznost a navyk.',
         recommendation: 'Kratke denni session jsou ted nejdulezitejsi.',
     };
+}
+
+function levelFromFrequencyTag(tag) {
+    if (tag === 'EN-5000') {
+        return 'A1';
+    }
+    if (tag === 'EN-10000') {
+        return 'A2';
+    }
+    if (tag === 'EN-20000') {
+        return 'B1';
+    }
+    return 'B2+';
 }
 
 function getDayDifference(previousDateIso) {
@@ -518,7 +534,9 @@ function QuickActionCard({ action, onStart }) {
     );
 }
 
-function StartHereCard({ title, subtitle, onPrimary, onSecondary, secondaryLabel }) {
+function StartHereCard({ title, subtitle, onPrimary, onSecondary, secondaryLabel, streakDays, dailyReviewed, dailyGoal }) {
+    const progressPercent = dailyGoal > 0 ? Math.min(100, Math.round((dailyReviewed / dailyGoal) * 100)) : 0;
+
     return (
         <section className="surface-card start-card">
             <div className="section-copy">
@@ -527,10 +545,28 @@ function StartHereCard({ title, subtitle, onPrimary, onSecondary, secondaryLabel
                 <p>{subtitle}</p>
             </div>
 
+            <div className="start-stats">
+                <div className="start-streak">
+                    <Flame size={15} strokeWidth={2.4} />
+                    <strong>{streakDays || 0} dní v řadě</strong>
+                </div>
+                <div className="start-goal">
+                    <div className="start-goal__row">
+                        <span>Dnešní cíl</span>
+                        <strong>
+                            {dailyReviewed}/{dailyGoal}
+                        </strong>
+                    </div>
+                    <div className="start-goal__bar">
+                        <span style={{ width: `${progressPercent}%` }} />
+                    </div>
+                </div>
+            </div>
+
             <div className="start-card__actions">
                 <button type="button" className="button button--primary" onClick={onPrimary}>
                     <Play size={18} strokeWidth={2.4} />
-                    Začít teď
+                    Pokračovat v učení
                 </button>
                 <button type="button" className="button button--secondary" onClick={onSecondary}>
                     <ArrowRight size={18} strokeWidth={2.4} />
@@ -572,11 +608,47 @@ function ThemePathsCard({ themes, selectedThemeId, onSelectTheme, onStartTheme }
     );
 }
 
+function LessonsScreen({ themes, onStartTheme }) {
+    return (
+        <section className="lessons-screen">
+            <div className="section-copy">
+                <h2>Lekce a témata</h2>
+                <p>Vyber jednu oblast a drž se jí pár dní pro stabilní pokrok.</p>
+            </div>
+
+            <div className="lesson-grid">
+                {themes.map((theme) => {
+                    const percent = theme.total ? Math.round((theme.mastered / theme.total) * 100) : 0;
+                    return (
+                        <article key={theme.id} className="lesson-card">
+                            <div className="lesson-card__head">
+                                <span className="lesson-card__badge">{theme.level}</span>
+                                <strong>{theme.label}</strong>
+                            </div>
+                            <p>
+                                {theme.mastered}/{theme.total} zvládnuto
+                            </p>
+                            <div className="lesson-card__progress">
+                                <span style={{ width: `${percent}%` }} />
+                            </div>
+                            <button type="button" className="button button--secondary" onClick={() => onStartTheme(theme.id)}>
+                                <Play size={16} strokeWidth={2.4} />
+                                Spustit lekci
+                            </button>
+                        </article>
+                    );
+                })}
+            </div>
+        </section>
+    );
+}
+
 function SideNav({ activeTab, onTabChange, streakDays }) {
     const items = [
-        { id: 'home', label: 'Dnes', icon: Home },
-        { id: 'library', label: 'Slovíčka', icon: BookOpen },
-        { id: 'settings', label: 'Nastavení', icon: SettingsIcon },
+        { id: 'today', label: 'Dnes', icon: Home },
+        { id: 'lessons', label: 'Lekce', icon: Compass },
+        { id: 'vocabulary', label: 'Slovník', icon: BookText },
+        { id: 'profile', label: 'Profil', icon: UserCircle2 },
     ];
 
     return (
@@ -623,17 +695,21 @@ function SideNav({ activeTab, onTabChange, streakDays }) {
 function MobileTabBar({ activeTab, onTabChange }) {
     return (
         <nav className="tab-bar">
-            <button type="button" className={`tab-bar__item ${activeTab === 'home' ? 'is-active' : ''}`} onClick={() => onTabChange('home')}>
+            <button type="button" className={`tab-bar__item ${activeTab === 'today' ? 'is-active' : ''}`} onClick={() => onTabChange('today')}>
                 <Home size={20} strokeWidth={2.5} />
                 <span>Dnes</span>
             </button>
-            <button type="button" className={`tab-bar__item ${activeTab === 'library' ? 'is-active' : ''}`} onClick={() => onTabChange('library')}>
-                <BookOpen size={20} strokeWidth={2.5} />
-                <span>Slovíčka</span>
+            <button type="button" className={`tab-bar__item ${activeTab === 'lessons' ? 'is-active' : ''}`} onClick={() => onTabChange('lessons')}>
+                <Compass size={20} strokeWidth={2.5} />
+                <span>Lekce</span>
             </button>
-            <button type="button" className={`tab-bar__item ${activeTab === 'settings' ? 'is-active' : ''}`} onClick={() => onTabChange('settings')}>
+            <button type="button" className={`tab-bar__item ${activeTab === 'vocabulary' ? 'is-active' : ''}`} onClick={() => onTabChange('vocabulary')}>
+                <BookText size={20} strokeWidth={2.5} />
+                <span>Slovník</span>
+            </button>
+            <button type="button" className={`tab-bar__item ${activeTab === 'profile' ? 'is-active' : ''}`} onClick={() => onTabChange('profile')}>
                 <SettingsIcon size={20} strokeWidth={2.5} />
-                <span>Nastavení</span>
+                <span>Profil</span>
             </button>
         </nav>
     );
@@ -646,7 +722,7 @@ function App() {
     const [libraryStatus, setLibraryStatus] = useState('loading');
     const [notice, setNotice] = useState(null);
     const [reloadToken, setReloadToken] = useState(0);
-    const [activeTab, setActiveTab] = useState('home');
+    const [activeTab, setActiveTab] = useState('today');
     const [selectedThemeId, setSelectedThemeId] = useState(() =>
         typeof window !== 'undefined' ? localStorage.getItem('gaba-active-theme') || 'travel' : 'travel'
     );
@@ -867,9 +943,12 @@ function App() {
 
                 let mastered = 0;
                 let due = 0;
+                const levelCount = {};
 
                 cards.forEach((card) => {
                     const stat = cardStats[card.sourceCardId];
+                    const level = levelFromFrequencyTag(card.frequencyTag);
+                    levelCount[level] = (levelCount[level] || 0) + 1;
                     if (!stat) {
                         return;
                     }
@@ -887,6 +966,7 @@ function App() {
                     total: cards.length,
                     mastered,
                     due,
+                    level: Object.entries(levelCount).sort((a, b) => b[1] - a[1])[0]?.[0] || 'A1',
                     cards,
                 };
             })
@@ -973,6 +1053,13 @@ function App() {
     );
 
     const hasFatigue = recentSuccessRate < 0.62 && dueCards.length > 0;
+    const dailyGoal = hasFatigue ? 20 : 30;
+    const dailyReviewed = useMemo(() => {
+        const todayKey = toDayKey(new Date().toISOString());
+        return sessionHistory
+            .filter((session) => toDayKey(session.reviewedAt || session.completedAt || '') === todayKey)
+            .reduce((sum, session) => sum + (session.reviewedCards || 0), 0);
+    }, [sessionHistory]);
 
     const heroMeta = [
         { label: 'série', value: `${progress.streakDays || 0} dní`, icon: Flame },
@@ -988,7 +1075,7 @@ function App() {
                     ? 'Nejdřív krátký reset: minimum nových slov, víc klidného opakování.'
                     : 'Stačí pár minut a vrátíš to, co se ztrácí.',
                 primaryLabel: 'Spustit opakování',
-                secondaryLabel: 'Učit vybrané téma',
+                secondaryLabel: 'Vybrat téma',
             };
         }
 
@@ -997,7 +1084,7 @@ function App() {
                 title: `Pokračuj v ${recommendedBand.lesson.title}`,
                 subtitle: `${learningStage.title}: jeden jasný další krok v hlavní cestě.`,
                 primaryLabel: `Otevřít ${recommendedBand.lesson.title}`,
-                secondaryLabel: 'Učit vybrané téma',
+                secondaryLabel: 'Vybrat téma',
             };
         }
 
@@ -1005,7 +1092,7 @@ function App() {
             title: 'Začni prvním blokem',
             subtitle: 'První malý krok bez rozptylování.',
             primaryLabel: 'Začít',
-            secondaryLabel: 'Učit vybrané téma',
+            secondaryLabel: 'Vybrat téma',
         };
     }, [dueCards.length, hasFatigue, recommendedBand, learningStage.title]);
 
@@ -1219,7 +1306,14 @@ function App() {
         });
     };
 
-    const appTitle = activeTab === 'home' ? 'Dnes' : activeTab === 'library' ? 'Slovíčka' : 'Nastavení';
+    const appTitle =
+        activeTab === 'today'
+            ? 'Dnes'
+            : activeTab === 'lessons'
+                ? 'Lekce'
+                : activeTab === 'vocabulary'
+                    ? 'Slovník'
+                    : 'Profil';
 
     return (
         <div className="web-stage">
@@ -1274,7 +1368,7 @@ function App() {
                                 <main className="content-scroll">
                                     <AnimatePresence>{notice ? <NoticeToast notice={notice} /> : null}</AnimatePresence>
 
-                                    {activeTab === 'home' ? (
+                                    {activeTab === 'today' ? (
                                         <>
                                             {libraryStatus === 'loading' ? <LoadingState /> : null}
                                             {libraryStatus === 'error' ? <ErrorState onRetry={() => setReloadToken((value) => value + 1)} /> : null}
@@ -1288,6 +1382,9 @@ function App() {
                                                         onPrimary={startToday}
                                                         onSecondary={() => startThemePath(safeThemeId)}
                                                         secondaryLabel={homeSummary.secondaryLabel}
+                                                        streakDays={progress.streakDays}
+                                                        dailyReviewed={dailyReviewed}
+                                                        dailyGoal={dailyGoal}
                                                     />
 
                                                     <ThemePathsCard
@@ -1308,11 +1405,15 @@ function App() {
                                         </>
                                     ) : null}
 
-                                    {activeTab === 'library' ? (
+                                    {activeTab === 'lessons' ? (
+                                        <LessonsScreen themes={themeRows} onStartTheme={startThemePath} />
+                                    ) : null}
+
+                                    {activeTab === 'vocabulary' ? (
                                         <VocabularyList cards={libraryCards} cardStats={cardStats} onMarkCardKnown={handleMarkCardKnown} />
                                     ) : null}
 
-                                    {activeTab === 'settings' ? (
+                                    {activeTab === 'profile' ? (
                                         <Settings
                                             progress={progress}
                                             onResetProgress={handleResetProgress}

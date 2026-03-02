@@ -38,6 +38,7 @@ export default function VocabularyList({ cards, cardStats, onMarkCardKnown }) {
     const [search, setSearch] = useState('');
     const deferredSearch = useDeferredValue(search);
     const [activeTheme, setActiveTheme] = useState('all');
+    const [activeStatus, setActiveStatus] = useState('all');
     const [showMastered, setShowMastered] = useState(() => {
         if (typeof window === 'undefined') {
             return true;
@@ -109,7 +110,15 @@ export default function VocabularyList({ cards, cardStats, onMarkCardKnown }) {
         window.localStorage.setItem('gaba-show-mastered', showMastered ? '1' : '0');
     }, [showMastered]);
 
-    const sectionOrder = showMastered ? ['learning', 'new', 'mastered'] : ['learning', 'new'];
+    const statusChips = [
+        { id: 'all', label: 'Vše' },
+        { id: 'learning', label: 'K zopakování' },
+        { id: 'new', label: 'Nová' },
+        { id: 'mastered', label: 'Zvládnutá' },
+    ];
+    const sectionOrder = (showMastered ? ['learning', 'new', 'mastered'] : ['learning', 'new']).filter(
+        (status) => activeStatus === 'all' || status === activeStatus
+    );
     const totalVisible = sectionOrder.reduce((sum, key) => sum + grouped[key].length, 0);
 
     const toggleSection = (key) => {
@@ -168,6 +177,20 @@ export default function VocabularyList({ cards, cardStats, onMarkCardKnown }) {
                         );
                     })}
                 </div>
+                <div className="status-filters" role="tablist" aria-label="Filtr stavu slovíček">
+                    {statusChips.map((chip) => (
+                        <button
+                            key={chip.id}
+                            type="button"
+                            role="tab"
+                            aria-selected={activeStatus === chip.id}
+                            className={`status-chip ${activeStatus === chip.id ? 'is-active' : ''}`}
+                            onClick={() => setActiveStatus(chip.id)}
+                        >
+                            {chip.label}
+                        </button>
+                    ))}
+                </div>
             </header>
 
             <div className="vocab-sections">
@@ -209,6 +232,20 @@ export default function VocabularyList({ cards, cardStats, onMarkCardKnown }) {
                                         {visibleCards.map((card) => {
                                             const status = statusForCard(card, cardStats);
                                             const isKnown = status === 'mastered';
+                                            const stat = cardStats[card.sourceCardId];
+                                            const strength = Math.max(
+                                                0,
+                                                Math.min(
+                                                    100,
+                                                    stat
+                                                        ? Math.round(
+                                                            (Math.min(4, stat.reviewCount || 0) / 4) * 55 +
+                                                            (Math.min(3.2, stat.ease || 1.3) - 1.3) * 22 +
+                                                            (status === 'mastered' ? 18 : 0)
+                                                        )
+                                                        : 10
+                                                )
+                                            );
 
                                             return (
                                                 <motion.article
@@ -233,6 +270,9 @@ export default function VocabularyList({ cards, cardStats, onMarkCardKnown }) {
                                                         </div>
                                                         <span>{card.cz}</span>
                                                         <em className="vocab-theme-label">{getThemeLabel(card.themeId)}</em>
+                                                        <div className="vocab-strength" aria-label={`Síla zapamatování ${strength}%`}>
+                                                            <span style={{ width: `${strength}%` }} />
+                                                        </div>
                                                     </div>
 
                                                     <div className="vocab-item__actions">
