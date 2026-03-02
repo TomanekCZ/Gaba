@@ -539,6 +539,102 @@ p {
   background: var(--bg-surface-soft);
 }
 
+.curve-card {
+  display: grid;
+  gap: 12px;
+}
+
+.curve-card__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.curve-card__header h2 {
+  font-size: 1.1rem;
+}
+
+.curve-card__header p {
+  margin-top: 4px;
+  font-size: 0.86rem;
+  color: var(--text-secondary);
+}
+
+.curve-stage {
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line-soft);
+  background: var(--bg-surface-soft);
+  color: var(--text-secondary);
+}
+
+.curve-stage strong {
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.curve-stage--entry {
+  color: var(--warning);
+}
+
+.curve-stage--stabilizing {
+  color: var(--primary);
+}
+
+.curve-stage--automatic {
+  color: var(--success);
+}
+
+.curve-bars {
+  height: 92px;
+  border-radius: 14px;
+  border: 1px solid var(--line-soft);
+  background: var(--bg-surface-soft);
+  padding: 10px;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.curve-bar-wrap {
+  display: grid;
+  justify-items: center;
+  align-content: end;
+  gap: 6px;
+}
+
+.curve-bar {
+  width: 100%;
+  max-width: 18px;
+  border-radius: 8px 8px 4px 4px;
+  background: linear-gradient(180deg, color-mix(in oklab, var(--primary) 75%, white), var(--primary));
+}
+
+.curve-bar-wrap small {
+  color: var(--text-muted);
+  font-size: 0.66rem;
+  font-weight: 800;
+}
+
+.curve-meta {
+  display: grid;
+  gap: 8px;
+}
+
+.curve-meta__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.38;
+}
+
 .quick-actions-panel {
   display: grid;
   gap: 12px;

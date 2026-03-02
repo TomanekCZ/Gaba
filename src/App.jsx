@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+    Activity,
     ArrowRight,
     BookOpen,
     CheckCircle2,
@@ -12,6 +13,8 @@ import {
     RotateCcw,
     Settings as SettingsIcon,
     Sparkles,
+    Target,
+    TrendingUp,
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import StudySession from './components/StudySession';
@@ -27,6 +30,7 @@ const BASE_LEVEL_TAG = 'EN-5000';
 const BASE_BAND_SIZE = 100;
 const PRIMARY_CARDS_URL = '/data/slovicka-lite.json';
 const FALLBACK_CARDS_URL = '/data/slovicka.json';
+const SESSION_HISTORY_LIMIT = 45;
 
 const DEFAULT_PROGRESS = {
     completedLessonIds: [],
@@ -38,6 +42,7 @@ const DEFAULT_PROGRESS = {
     lastLessonId: null,
     lastLessonTitle: null,
     lastStudiedAt: null,
+    sessionHistory: [],
 };
 
 function normalizeCard(card, index, lessonId) {
@@ -143,6 +148,7 @@ function loadStoredProgress() {
             ...parsed,
             completedLessonIds: Array.isArray(parsed.completedLessonIds) ? parsed.completedLessonIds : [],
             cardStats: parsedCardStats,
+            sessionHistory: Array.isArray(parsed.sessionHistory) ? parsed.sessionHistory : [],
         };
     } catch (error) {
         console.warn('Failed to restore progress:', error);
@@ -157,6 +163,46 @@ function persistToStorage(key, value) {
     } catch (error) {
         console.warn(`Failed to persist ${key}:`, error);
     }
+}
+
+function toDayKey(dateIso) {
+    const date = new Date(dateIso);
+    const year = date.getFullYear();
+    const month = `${date.getMonth() + 1}`.padStart(2, '0');
+    const day = `${date.getDate()}`.padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function appendSessionHistory(currentHistory, entry) {
+    const history = Array.isArray(currentHistory) ? currentHistory : [];
+    return [...history, entry].slice(-SESSION_HISTORY_LIMIT);
+}
+
+function buildLearningStage({ masteredRatio, sessionsCompleted, streakDays, recentSuccessRate }) {
+    if (masteredRatio >= 0.66 && recentSuccessRate >= 0.78 && streakDays >= 5) {
+        return {
+            id: 'automatic',
+            title: 'Automatizace',
+            subtitle: 'Slova drzi i po delsi pauze.',
+            recommendation: 'Pridej vice novych slov v kratsich blocich.',
+        };
+    }
+
+    if (masteredRatio >= 0.32 || sessionsCompleted >= 8) {
+        return {
+            id: 'stabilizing',
+            title: 'Stabilizace',
+            subtitle: 'Zaklad drzi, ale cast se vraci.',
+            recommendation: 'Drz denni rytmus a lehce zvys opakovani.',
+        };
+    }
+
+    return {
+        id: 'entry',
+        title: 'Rozjezd',
+        subtitle: 'Budujes prvni navaznost a navyk.',
+        recommendation: 'Kratke denni session jsou ted nejdulezitejsi.',
+    };
 }
 
 function getDayDifference(previousDateIso) {
@@ -404,6 +450,46 @@ function JourneyCard({ progressPercent, bandProgress }) {
                         {band.completed ? <CheckCircle2 size={13} strokeWidth={2.6} /> : index + 1}
                     </div>
                 ))}
+            </div>
+        </section>
+    );
+}
+
+function LearningCurveCard({ stage, curvePoints, recentSuccessRate, reviewedLastWeek }) {
+    const maxValue = curvePoints.reduce((max, point) => Math.max(max, point.value), 1);
+
+    return (
+        <section className="surface-card curve-card">
+            <div className="curve-card__header">
+                <div>
+                    <span className="eyebrow">Učící křivka</span>
+                    <h2>{stage.title}</h2>
+                    <p>{stage.subtitle}</p>
+                </div>
+                <div className={`curve-stage curve-stage--${stage.id}`}>
+                    <TrendingUp size={14} strokeWidth={2.5} />
+                    <strong>{Math.round(recentSuccessRate * 100)}%</strong>
+                </div>
+            </div>
+
+            <div className="curve-bars" aria-label="Trend poslednich 7 dni">
+                {curvePoints.map((point) => (
+                    <div key={point.day} className="curve-bar-wrap" title={`${point.dayLabel}: ${point.value}`}>
+                        <span className="curve-bar" style={{ height: `${Math.max(8, Math.round((point.value / maxValue) * 100))}%` }} />
+                        <small>{point.shortDay}</small>
+                    </div>
+                ))}
+            </div>
+
+            <div className="curve-meta">
+                <div className="curve-meta__item">
+                    <Activity size={15} strokeWidth={2.4} />
+                    <span>{reviewedLastWeek} opakovani / 7 dni</span>
+                </div>
+                <div className="curve-meta__item">
+                    <Target size={15} strokeWidth={2.4} />
+                    <span>{stage.recommendation}</span>
+                </div>
             </div>
         </section>
     );
@@ -708,6 +794,71 @@ function App() {
         return unseen.length ? unseen : baseDeck.cards;
     }, [recommendedBand, baseDeck, cardStats]);
 
+    const masteredTotal = useMemo(
+        () => Object.values(cardStats).filter((s) => s.lastRating === 'good' || s.lastRating === 'easy').length,
+        [cardStats]
+    );
+
+    const globalProgressPercent = useMemo(
+        () => (libraryCards.length ? Math.round((masteredTotal / libraryCards.length) * 100) : 0),
+        [masteredTotal, libraryCards.length]
+    );
+
+    const sessionHistory = Array.isArray(progress.sessionHistory) ? progress.sessionHistory : [];
+    const recentSessions = useMemo(() => sessionHistory.slice(-5), [sessionHistory]);
+    const recentSuccessRate = useMemo(() => {
+        if (!recentSessions.length) {
+            return 0.7;
+        }
+
+        const total = recentSessions.reduce((sum, session) => sum + (session.completionRate || 0), 0);
+        return Math.max(0, Math.min(1, total / recentSessions.length / 100));
+    }, [recentSessions]);
+
+    const reviewedLastWeek = useMemo(() => {
+        const now = Date.now();
+        const weekAgo = now - 7 * 86400000;
+        return sessionHistory
+            .filter((session) => new Date(session.reviewedAt || session.completedAt || 0).getTime() >= weekAgo)
+            .reduce((sum, session) => sum + (session.reviewedCards || 0), 0);
+    }, [sessionHistory]);
+
+    const learningCurve = useMemo(() => {
+        const now = new Date();
+        const formatterShort = new Intl.DateTimeFormat('cs-CZ', { weekday: 'short' });
+        return Array.from({ length: 7 }, (_, index) => {
+            const date = new Date(now);
+            date.setDate(now.getDate() - (6 - index));
+            const day = toDayKey(date.toISOString());
+
+            const sessionsForDay = sessionHistory.filter((session) => toDayKey(session.reviewedAt || session.completedAt || '') === day);
+            const value = sessionsForDay.reduce(
+                (sum, session) => sum + (session.reviewedCards || 0) * ((session.completionRate || 0) / 100),
+                0
+            );
+
+            return {
+                day,
+                dayLabel: date.toLocaleDateString('cs-CZ', { day: 'numeric', month: 'numeric' }),
+                shortDay: formatterShort.format(date).replace('.', ''),
+                value: Number(value.toFixed(1)),
+            };
+        });
+    }, [sessionHistory]);
+
+    const learningStage = useMemo(
+        () =>
+            buildLearningStage({
+                masteredRatio: libraryCards.length ? masteredTotal / libraryCards.length : 0,
+                sessionsCompleted: progress.sessionsCompleted || 0,
+                streakDays: progress.streakDays || 0,
+                recentSuccessRate,
+            }),
+        [libraryCards.length, masteredTotal, progress.sessionsCompleted, progress.streakDays, recentSuccessRate]
+    );
+
+    const hasFatigue = recentSuccessRate < 0.62 && dueCards.length > 0;
+
     const heroMeta = [
         { label: 'série', value: `${progress.streakDays || 0} dní`, icon: Flame },
         { label: 'naposledy', value: formatLastStudied(progress.lastStudiedAt), icon: RotateCcw },
@@ -718,16 +869,18 @@ function App() {
         if (dueCards.length) {
             return {
                 title: `Dnes čeká ${dueCards.length} slov`,
-                subtitle: 'Stačí pár minut a vrátíš to, co se ztrácí.',
+                subtitle: hasFatigue
+                    ? 'Nejdřív krátký reset: minimum nových slov, víc klidného opakování.'
+                    : 'Stačí pár minut a vrátíš to, co se ztrácí.',
                 primaryLabel: 'Spustit opakování',
-                secondaryLabel: 'Nových 8',
+                secondaryLabel: hasFatigue ? 'Lehký restart' : 'Nových 8',
             };
         }
 
         if (recommendedBand) {
             return {
                 title: `Pokračuj v ${recommendedBand.lesson.title}`,
-                subtitle: 'Jeden jasný další krok v hlavní cestě.',
+                subtitle: `${learningStage.title}: jeden jasný další krok v hlavní cestě.`,
                 primaryLabel: `Otevřít ${recommendedBand.lesson.title}`,
                 secondaryLabel: 'Nových 8',
             };
@@ -739,7 +892,7 @@ function App() {
             primaryLabel: 'Začít',
             secondaryLabel: 'Lehký start',
         };
-    }, [dueCards.length, recommendedBand]);
+    }, [dueCards.length, hasFatigue, recommendedBand, learningStage.title]);
 
     const quickActions = useMemo(() => {
         const hasDueCards = dueCards.length > 0;
@@ -749,19 +902,19 @@ function App() {
                 id: 'quick-review',
                 title: '5 minut',
                 description: hasDueCards ? 'Splatná slovíčka právě teď.' : 'Lehký mix na zahřátí.',
-                meta: `${Math.min(hasDueCards ? dueCards.length : nextStepCards.length, 8)} slov`,
+                meta: `${Math.min(hasDueCards ? dueCards.length : nextStepCards.length, hasFatigue ? 6 : 8)} slov`,
                 icon: Clock3,
                 kind: hasDueCards ? 'review' : 'fresh',
-                size: 8,
+                size: hasFatigue ? 6 : 8,
             },
             {
                 id: 'focus-review',
                 title: 'Fokus',
                 description: hasDueCards ? `Další okno se vrací ${nextDueLabel}.` : 'O něco delší blok.',
-                meta: `${Math.min(hasDueCards ? dueCards.length : nextStepCards.length, hasDueCards ? 16 : 12)} slov`,
+                meta: `${Math.min(hasDueCards ? dueCards.length : nextStepCards.length, hasDueCards ? (hasFatigue ? 12 : 16) : 12)} slov`,
                 icon: RotateCcw,
                 kind: hasDueCards ? 'review' : 'fresh',
-                size: hasDueCards ? 16 : 12,
+                size: hasDueCards ? (hasFatigue ? 12 : 16) : 12,
             },
             {
                 id: 'next-step',
@@ -770,20 +923,10 @@ function App() {
                 meta: 'progress',
                 icon: Sparkles,
                 kind: 'fresh',
-                size: 8,
+                size: hasFatigue ? 6 : 8,
             },
         ];
-    }, [dueCards.length, nextStepCards.length, recommendedBand, nextDueLabel]);
-
-    const masteredTotal = useMemo(
-        () => Object.values(cardStats).filter((s) => s.lastRating === 'good' || s.lastRating === 'easy').length,
-        [cardStats]
-    );
-
-    const globalProgressPercent = useMemo(
-        () => (libraryCards.length ? Math.round((masteredTotal / libraryCards.length) * 100) : 0),
-        [masteredTotal, libraryCards.length]
-    );
+    }, [dueCards.length, nextStepCards.length, recommendedBand, nextDueLabel, hasFatigue]);
 
     const startToday = () => {
         if (dueCards.length) {
@@ -856,6 +999,17 @@ function App() {
                 cardsReviewed: currentProgress.cardsReviewed + summary.reviewedCards,
                 masteredCards: currentProgress.masteredCards + summary.goodCount + summary.easyCount,
                 cardStats: buildUpdatedCardStats(currentProgress.cardStats || {}, summary.cardResults),
+                sessionHistory: appendSessionHistory(currentProgress.sessionHistory, {
+                    lessonId: lesson.id,
+                    lessonTitle: lesson.title,
+                    reviewedCards: summary.reviewedCards,
+                    completionRate: summary.completionRate,
+                    againCount: summary.againCount,
+                    hardCount: summary.hardCount,
+                    goodCount: summary.goodCount,
+                    easyCount: summary.easyCount,
+                    reviewedAt: new Date().toISOString(),
+                }),
                 streakDays:
                     streakUpdate === 'increment'
                         ? currentProgress.streakDays + 1
@@ -989,6 +1143,12 @@ function App() {
                                                     />
 
                                                     <JourneyCard progressPercent={globalProgressPercent} bandProgress={bandProgress} />
+                                                    <LearningCurveCard
+                                                        stage={learningStage}
+                                                        curvePoints={learningCurve}
+                                                        recentSuccessRate={recentSuccessRate}
+                                                        reviewedLastWeek={reviewedLastWeek}
+                                                    />
 
                                                     <section className="surface-card quick-actions-panel">
                                                         <div className="section-copy">
