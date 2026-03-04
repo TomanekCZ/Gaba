@@ -1,9 +1,10 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700;800;900&display=swap');
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   GABA 2026 — Spatial Glassmorphism Design System
-   A modern, immersive mobile learning experience
-   ───────────────────────────────────────────────────────────────────────────── */
+    GABA 2026 — Spatial Glassmorphism Design System
+    A modern, immersive mobile learning experience
+    Optimized for phones and tablets with touch-first design
+    ───────────────────────────────────────────────────────────────────────────── */
 
 /* ─────────────────────────────────────────────────────────────────────────────
    DESIGN TOKENS
@@ -128,6 +129,11 @@
   --max-width: 480px;
   --safe-top: env(safe-area-inset-top, 20px);
   --safe-bottom: env(safe-area-inset-bottom, 20px);
+
+  /* ── Touch Optimizations ── */
+  --touch-target: 48px;
+  --touch-target-lg: 56px;
+  --touch-target-xl: 64px;
 
   /* ── Transitions ── */
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -337,8 +343,10 @@ h1, h2, h3, h4, h5, h6, .brand-font {
 }
 
 .theme-toggle {
-  width: 42px;
-  height: 42px;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
   border-radius: var(--radius-full);
   border: 1px solid var(--border);
   background: var(--bg-secondary);
@@ -350,6 +358,7 @@ h1, h2, h3, h4, h5, h6, .brand-font {
   cursor: pointer;
   color: var(--text);
   transition: all var(--t-fast);
+  touch-action: manipulation;
 }
 
 .theme-toggle:hover {
@@ -362,27 +371,29 @@ h1, h2, h3, h4, h5, h6, .brand-font {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   MAIN CONTENT AREA
-   ───────────────────────────────────────────────────────────────────────────── */
+    MAIN CONTENT AREA - Compact for mobile
+    ───────────────────────────────────────────────────────────────────────────── */
 .main-content {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: var(--space-5);
-  padding-bottom: calc(var(--tab-bar-height) + var(--space-8));
+  padding: var(--space-3);
+  padding-bottom: calc(var(--tab-bar-height) + var(--space-4));
   -webkit-overflow-scrolling: touch;
   scroll-behavior: smooth;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   FLOATING TAB BAR — Glass Island
-   ───────────────────────────────────────────────────────────────────────────── */
+    FLOATING TAB BAR — Glass Island
+    Enhanced with better touch targets and spacing
+    ───────────────────────────────────────────────────────────────────────────── */
 .tab-bar {
   position: absolute;
   bottom: calc(var(--safe-bottom) + var(--space-3));
   left: var(--space-4);
   right: var(--space-4);
   height: var(--tab-bar-height);
+  min-height: var(--touch-target-xl);
   background: var(--bg-elevated);
   backdrop-filter: var(--blur-xl);
   -webkit-backdrop-filter: var(--blur-xl);
@@ -395,6 +406,7 @@ h1, h2, h3, h4, h5, h6, .brand-font {
   box-shadow: var(--shadow-float);
   z-index: 100;
   transition: all var(--t-fast);
+  touch-action: manipulation;
 }
 
 .tab-item {
@@ -403,9 +415,10 @@ h1, h2, h3, h4, h5, h6, .brand-font {
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  min-height: var(--touch-target);
   height: 100%;
   color: var(--text-tertiary);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   font-family: 'Inter', sans-serif;
   transition: all var(--t-fast);
@@ -416,7 +429,8 @@ h1, h2, h3, h4, h5, h6, .brand-font {
   letter-spacing: 0.02em;
   margin: 2px;
   border-radius: var(--radius-full);
-  padding: var(--space-2) 0;
+  padding: var(--space-3) 0;
+  touch-action: manipulation;
 }
 
 .tab-item svg {
@@ -447,14 +461,16 @@ h1, h2, h3, h4, h5, h6, .brand-font {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   BUTTONS — 2026 Spatial Design
-   ───────────────────────────────────────────────────────────────────────────── */
+    BUTTONS — 2026 Spatial Design
+    Touch-optimized for mobile with larger tap targets
+    ───────────────────────────────────────────────────────────────────────────── */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  padding: 16px 28px;
+  padding: 18px 32px;
+  min-height: var(--touch-target-lg);
   border-radius: var(--radius-full);
   font-size: var(--text-md);
   font-weight: 600;
@@ -469,6 +485,7 @@ h1, h2, h3, h4, h5, h6, .brand-font {
   -webkit-backdrop-filter: var(--blur-md);
   position: relative;
   overflow: hidden;
+  touch-action: manipulation;
 }
 
 .btn::before {
@@ -549,12 +566,14 @@ h1, h2, h3, h4, h5, h6, .brand-font {
 }
 
 .btn--sm {
-  padding: 10px 20px;
+  min-height: var(--touch-target);
+  padding: 12px 24px;
   font-size: var(--text-sm);
 }
 
 .btn--lg {
-  padding: 20px 40px;
+  min-height: var(--touch-target-xl);
+  padding: 24px 48px;
   font-size: var(--text-lg);
 }
 
@@ -571,20 +590,20 @@ h1, h2, h3, h4, h5, h6, .brand-font {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   DAILY PROGRESS BANNER
-   ───────────────────────────────────────────────────────────────────────────── */
+    DAILY PROGRESS BANNER - Compact for mobile
+    ───────────────────────────────────────────────────────────────────────────── */
 .daily-progress-banner {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-5);
-  margin-bottom: var(--space-4);
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-3);
   background: var(--bg-elevated);
   backdrop-filter: var(--blur-md);
   -webkit-backdrop-filter: var(--blur-md);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-lg);
   border: 1px solid var(--border);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-sm);
 }
 
 .daily-progress-banner__content {
@@ -595,21 +614,21 @@ h1, h2, h3, h4, h5, h6, .brand-font {
 .daily-progress-banner__title {
   font-family: 'Outfit', sans-serif;
   font-weight: 700;
-  font-size: var(--text-lg);
+  font-size: var(--text-md);
   color: var(--text-primary);
-  margin-bottom: 4px;
+  margin-bottom: 2px;
   letter-spacing: -0.02em;
 }
 
 .daily-progress-banner__subtitle {
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
   color: var(--text-secondary);
   font-weight: 500;
-  margin-bottom: var(--space-3);
+  margin-bottom: var(--space-2);
 }
 
 .daily-progress-banner__bar {
-  height: 6px;
+  height: 4px;
   background: var(--bg-tertiary);
   border-radius: var(--radius-full);
   overflow: hidden;
@@ -619,16 +638,16 @@ h1, h2, h3, h4, h5, h6, .brand-font {
   height: 100%;
   background: linear-gradient(90deg, var(--secondary), var(--primary));
   border-radius: var(--radius-full);
-  box-shadow: 0 0 16px var(--primary-glow);
+  box-shadow: 0 0 8px var(--primary-glow);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   PROGRESS RING
-   ───────────────────────────────────────────────────────────────────────────── */
+    PROGRESS RING - Compact for mobile
+    ───────────────────────────────────────────────────────────────────────────── */
 .progress-ring {
   position: relative;
-  width: 84px;
-  height: 84px;
+  width: 64px;
+  height: 64px;
   flex-shrink: 0;
 }
 
@@ -640,15 +659,15 @@ h1, h2, h3, h4, h5, h6, .brand-font {
 .progress-ring__bg {
   fill: none;
   stroke: var(--bg-tertiary);
-  stroke-width: 7;
+  stroke-width: 6;
 }
 
 .progress-ring__fill {
   fill: none;
   stroke: var(--primary);
-  stroke-width: 7;
+  stroke-width: 6;
   stroke-linecap: round;
-  filter: drop-shadow(0 0 12px var(--primary-glow));
+  filter: drop-shadow(0 0 8px var(--primary-glow));
 }
 
 .progress-ring__text {
@@ -658,7 +677,7 @@ h1, h2, h3, h4, h5, h6, .brand-font {
   transform: translate(-50%, -50%);
   font-family: 'Outfit', sans-serif;
   font-weight: 800;
-  font-size: var(--text-2xl);
+  font-size: var(--text-lg);
   color: var(--text-primary);
   display: flex;
   align-items: center;
@@ -666,17 +685,17 @@ h1, h2, h3, h4, h5, h6, .brand-font {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   STREAK BANNER — Fire Gradient
-   ───────────────────────────────────────────────────────────────────────────── */
+    STREAK BANNER — Compact for mobile
+    ───────────────────────────────────────────────────────────────────────────── */
 .streak-banner {
   background: linear-gradient(135deg, var(--warning) 0%, #FF6B00 50%, #FF453A 100%);
-  border-radius: var(--radius-xl);
-  padding: var(--space-5);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-4);
   display: flex;
   align-items: center;
-  gap: var(--space-4);
-  margin-bottom: var(--space-5);
-  box-shadow: 0 12px 40px var(--warning-glow);
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  box-shadow: 0 8px 24px var(--warning-glow);
   border: 1px solid rgba(255, 255, 255, 0.2);
   position: relative;
   overflow: hidden;
@@ -695,7 +714,7 @@ h1, h2, h3, h4, h5, h6, .brand-font {
 }
 
 .streak-banner__icon {
-  font-size: 36px;
+  font-size: 28px;
   filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.3));
   position: relative;
   z-index: 1;
@@ -710,32 +729,32 @@ h1, h2, h3, h4, h5, h6, .brand-font {
 .streak-banner__title {
   font-family: 'Outfit', sans-serif;
   font-weight: 800;
-  font-size: var(--text-xl);
+  font-size: var(--text-md);
   color: #FFFFFF;
 }
 
 .streak-banner__subtitle {
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
   color: rgba(255, 255, 255, 0.9);
   font-weight: 500;
   margin-top: 2px;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   STATS ROW
-   ───────────────────────────────────────────────────────────────────────────── */
+    STATS ROW - Compact for mobile
+    ───────────────────────────────────────────────────────────────────────────── */
 .stats-row {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: var(--space-3);
-  margin-bottom: var(--space-6);
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
 }
 
 .stat-item {
   flex: 1;
-  padding: var(--space-4) var(--space-3);
+  padding: var(--space-3);
   text-align: center;
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-md);
   background: var(--bg-elevated);
   backdrop-filter: var(--blur-md);
   -webkit-backdrop-filter: var(--blur-md);
@@ -752,7 +771,7 @@ h1, h2, h3, h4, h5, h6, .brand-font {
 .stat-item__value {
   font-family: 'Outfit', sans-serif;
   font-weight: 800;
-  font-size: 26px;
+  font-size: 20px;
   color: var(--text-primary);
   display: flex;
   align-items: center;
@@ -771,38 +790,38 @@ h1, h2, h3, h4, h5, h6, .brand-font {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   SECTIONS
-   ───────────────────────────────────────────────────────────────────────────── */
+    SECTIONS - Compact for mobile
+    ───────────────────────────────────────────────────────────────────────────── */
 .section {
-  margin-bottom: var(--space-7);
+  margin-bottom: var(--space-4);
 }
 
 .section__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: var(--space-4);
+  margin-bottom: var(--space-3);
 }
 
 .section__title {
   font-family: 'Outfit', sans-serif;
   font-weight: 700;
-  font-size: var(--text-xl);
+  font-size: var(--text-md);
   color: var(--text-primary);
   letter-spacing: -0.02em;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   LESSON CARDS — Interactive
-   ───────────────────────────────────────────────────────────────────────────── */
+    LESSON CARDS — Interactive - Compact for mobile
+    ───────────────────────────────────────────────────────────────────────────── */
 .lesson-card {
-  padding: var(--space-4);
-  margin-bottom: var(--space-3);
+  padding: var(--space-3);
+  margin-bottom: var(--space-2);
   display: flex;
   align-items: center;
-  gap: var(--space-4);
+  gap: var(--space-3);
   cursor: pointer;
-  border-radius: var(--radius-2xl);
+  border-radius: var(--radius-lg);
   background: var(--bg-elevated);
   backdrop-filter: var(--blur-md);
   -webkit-backdrop-filter: var(--blur-md);
@@ -811,6 +830,8 @@ h1, h2, h3, h4, h5, h6, .brand-font {
   transition: all var(--t-fast);
   position: relative;
   overflow: hidden;
+  touch-action: manipulation;
+  min-height: var(--touch-target);
 }
 
 .lesson-card::before {
@@ -838,15 +859,15 @@ h1, h2, h3, h4, h5, h6, .brand-font {
 }
 
 .lesson-card__icon {
-  width: 52px;
-  height: 52px;
-  border-radius: var(--radius-lg);
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
+  font-size: 20px;
   flex-shrink: 0;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   position: relative;
   z-index: 1;
 }
@@ -861,21 +882,21 @@ h1, h2, h3, h4, h5, h6, .brand-font {
 .lesson-card__title {
   font-family: 'Outfit', sans-serif;
   font-weight: 700;
-  font-size: var(--text-lg);
+  font-size: var(--text-md);
   color: var(--text-primary);
-  margin-bottom: 4px;
+  margin-bottom: 2px;
   letter-spacing: -0.01em;
 }
 
 .lesson-card__meta {
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
   color: var(--text-secondary);
   font-weight: 500;
 }
 
 .lesson-card__arrow {
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
   border-radius: var(--radius-full);
   background: var(--bg-tertiary);
   display: flex;
@@ -956,15 +977,17 @@ h1, h2, h3, h4, h5, h6, .brand-font {
   letter-spacing: -0.02em;
 }
 
-/* Sound Buttons — Spatial Design */
+/* Sound Buttons — Spatial Design - Touch Optimized */
 .quiz-sound-btn {
   background: var(--bg-elevated);
   backdrop-filter: var(--blur-md);
   -webkit-backdrop-filter: var(--blur-md);
   border: 1px solid var(--border);
   border-radius: var(--radius-full);
-  width: 76px;
-  height: 76px;
+  width: 80px;
+  height: 80px;
+  min-width: 80px;
+  min-height: 80px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -976,6 +999,7 @@ h1, h2, h3, h4, h5, h6, .brand-font {
   transition: all var(--t-fast);
   position: relative;
   overflow: hidden;
+  touch-action: manipulation;
 }
 
 .quiz-sound-btn::before {
@@ -1029,17 +1053,18 @@ h1, h2, h3, h4, h5, h6, .brand-font {
   color: var(--secondary);
 }
 
-/* Answer Buttons */
+/* Answer Buttons - Touch Optimized */
 .quiz-answer-buttons {
   display: flex;
-  gap: var(--space-3);
+  gap: var(--space-4);
   width: 100%;
-  padding: var(--space-4) 0;
+  padding: var(--space-5) 0;
 }
 
 .quiz-answer-btn {
   flex: 1;
-  padding: 22px var(--space-4);
+  min-height: var(--touch-target-xl);
+  padding: 24px var(--space-5);
   border-radius: var(--radius-xl);
   font-size: var(--text-md);
   font-weight: 700;
@@ -1053,6 +1078,7 @@ h1, h2, h3, h4, h5, h6, .brand-font {
   cursor: pointer;
   position: relative;
   overflow: hidden;
+  touch-action: manipulation;
 }
 
 .quiz-answer-btn--wrong {
@@ -1227,10 +1253,24 @@ h1, h2, h3, h4, h5, h6, .brand-font {
   z-index: 1;
 }
 
-/* Vocabulary Search */
-.vocabulary-search {
-  position: relative;
-  margin-bottom: var(--space-3);
+/* Vocabulary Search - Touch Optimized */
+.vocabulary-search__input {
+  width: 100%;
+  padding: 20px 24px 20px 56px;
+  min-height: var(--touch-target-lg);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+  font-size: var(--text-base);
+  font-weight: 500;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+  transition: all var(--t-fast);
+  backdrop-filter: var(--blur-md);
+  -webkit-backdrop-filter: var(--blur-md);
+  font-family: 'Inter', sans-serif;
+  -webkit-appearance: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .vocabulary-search__icon {
@@ -1320,12 +1360,12 @@ h1, h2, h3, h4, h5, h6, .brand-font {
   box-shadow: var(--shadow-sm);
 }
 
-/* Vocabulary Card */
+/* Vocabulary Card - Touch Optimized */
 .vocabulary-card {
   display: flex;
   align-items: center;
   gap: var(--space-4);
-  padding: var(--space-4);
+  padding: var(--space-5);
   margin-bottom: var(--space-3);
   position: relative;
   border-radius: var(--radius-xl);
@@ -1335,12 +1375,18 @@ h1, h2, h3, h4, h5, h6, .brand-font {
   border: 1px solid var(--border);
   box-shadow: var(--shadow-sm);
   transition: all var(--t-fast);
+  cursor: pointer;
+  touch-action: manipulation;
 }
 
 .vocabulary-card:hover {
   transform: translateX(4px);
   box-shadow: var(--shadow-md);
   border-color: var(--border-strong);
+}
+
+.vocabulary-card:active {
+  transform: scale(0.98);
 }
 
 .vocabulary-card__badge {
@@ -1642,8 +1688,8 @@ h1, h2, h3, h4, h5, h6, .brand-font {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   LOADING & EMPTY STATES
-   ───────────────────────────────────────────────────────────────────────────── */
+    LOADING & EMPTY STATES
+    ───────────────────────────────────────────────────────────────────────────── */
 .loading-screen {
   height: 100vh;
   display: flex;
@@ -1651,12 +1697,23 @@ h1, h2, h3, h4, h5, h6, .brand-font {
   align-items: center;
   justify-content: center;
   background: radial-gradient(ellipse at center, var(--bg-secondary) 0%, var(--bg) 100%);
+  padding: var(--space-5);
 }
 
 .loading-screen__icon {
   font-size: 80px;
   margin-bottom: var(--space-6);
   filter: drop-shadow(0 16px 40px rgba(0, 0, 0, 0.15));
+  animation: bounce 1.5s ease-in-out infinite;
+}
+
+@keyframes bounce {
+  0%, 100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-20px) scale(1.05);
+  }
 }
 
 .loading-screen__text {
@@ -1664,6 +1721,41 @@ h1, h2, h3, h4, h5, h6, .brand-font {
   font-weight: 600;
   font-size: var(--text-lg);
   color: var(--text-secondary);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.loading-screen__progress {
+  width: 200px;
+  height: 4px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-full);
+  margin-top: var(--space-5);
+  overflow: hidden;
+}
+
+.loading-screen__progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary), var(--secondary));
+  border-radius: var(--radius-full);
+  animation: loading 1.5s ease-in-out infinite;
+}
+
+@keyframes loading {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
 }
 
 .empty-state {
@@ -1736,42 +1828,283 @@ h1, h2, h3, h4, h5, h6, .brand-font {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   SCROLLBAR STYLING
-   ───────────────────────────────────────────────────────────────────────────── */
-.main-content::-webkit-scrollbar {
-  width: 6px;
+    HAPTIC FEEDBACK ENHANCEMENTS
+    Visual feedback for touch interactions
+    ───────────────────────────────────────────────────────────────────────────── */
+
+/* Press/Active states for better touch feedback */
+.btn:active,
+.lesson-card:active,
+.vocabulary-card:active,
+.quiz-answer-btn:active,
+.quiz-sound-btn:active,
+.tab-item:active,
+.vocabulary-load-more:active,
+.option-card:active {
+  transform: scale(0.97) !important;
+  transition: transform 0.1s ease;
 }
 
-.main-content::-webkit-scrollbar-track {
-  background: transparent;
+/* Hover states for touch devices (prevent hover effects on touch) */
+@media (hover: none) {
+  .btn:hover,
+  .lesson-card:hover,
+  .vocabulary-card:hover,
+  .quiz-answer-btn:hover,
+  .quiz-sound-btn:hover {
+    transform: none;
+  }
+
+  .tab-item:hover {
+    background: transparent;
+  }
 }
 
-.main-content::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
-  border-radius: var(--radius-full);
+/* Touch ripple effect for interactive elements */
+.btn::after,
+.lesson-card::after,
+.vocabulary-card::after,
+.quiz-answer-btn::after,
+.tab-item::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,0.3) 0%, transparent 70%);
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  pointer-events: none;
 }
 
-.main-content::-webkit-scrollbar-thumb:hover {
-  background: var(--text-tertiary);
+.btn:active::after,
+.lesson-card:active::after,
+.vocabulary-card:active::after,
+.quiz-answer-btn:active::after,
+.tab-item:active::after {
+  width: 300%;
+  height: 300%;
+  opacity: 1;
+  animation: ripple 0.6s ease-out forwards;
+}
+
+@keyframes ripple {
+  from {
+    width: 0;
+    height: 0;
+    opacity: 0.5;
+  }
+  to {
+    width: 300%;
+    height: 300%;
+    opacity: 0;
+  }
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   RESPONSIVE ADJUSTMENTS
-   ───────────────────────────────────────────────────────────────────────────── */
+    PROGRESS INDICATORS
+    Enhanced visual feedback for progress tracking
+    ───────────────────────────────────────────────────────────────────────────── */
+
+/* Animated progress bars */
+.daily-progress-banner__bar-fill,
+.session-complete__progress-bar > div {
+  position: relative;
+  overflow: hidden;
+}
+
+.daily-progress-banner__bar-fill::before,
+.session-complete__progress-bar > div::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    left: -100%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+
+/* Progress ring glow animation */
+.progress-ring__fill {
+  filter: drop-shadow(0 0 12px var(--primary-glow));
+  animation: pulse-ring 2s ease-in-out infinite;
+}
+
+@keyframes pulse-ring {
+  0%, 100% {
+    filter: drop-shadow(0 0 12px var(--primary-glow));
+  }
+  50% {
+    filter: drop-shadow(0 0 20px var(--primary-glow));
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+    SCROLL & GESTURE OPTIMIZATIONS
+    Smooth scrolling and gesture support for mobile
+    ───────────────────────────────────────────────────────────────────────────── */
+
+/* Pull-to-refresh visual feedback */
+.main-content {
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
+/* Hide scrollbars for cleaner mobile UI but keep functionality */
+.main-content::-webkit-scrollbar {
+  width: 0px;
+  background: transparent;
+}
+
+/* Prevent bounce scrolling on iOS */
+body {
+  overscroll-behavior-y: none;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+    INPUT FIELD ENHANCEMENTS
+    Better keyboard handling on mobile devices
+    ───────────────────────────────────────────────────────────────────────────── */
+
+input[type="text"],
+input[type="search"],
+select {
+  font-size: 16px; /* Prevents iOS zoom on focus */
+  -webkit-appearance: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  border-radius: var(--radius-full);
+}
+
+/* Focus states for keyboard navigation */
+input:focus,
+select:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--secondary-ghost);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+    ACCESSIBILITY IMPROVEMENTS
+    Better focus indicators and screen reader support
+    ───────────────────────────────────────────────────────────────────────────── */
+
+/* High contrast focus indicators */
+:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Reduce motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+    SAFE AREA HANDLING
+    Proper spacing for notched devices (iPhone X+, etc.)
+    ───────────────────────────────────────────────────────────────────────────── */
+
+/* Ensure content doesn't get hidden by safe areas */
+.app-container {
+  padding-left: env(safe-area-inset-left, 0);
+  padding-right: env(safe-area-inset-right, 0);
+}
+
+/* Adjust tab bar for notched devices */
+.tab-bar {
+  padding-left: max(var(--space-2), env(safe-area-inset-left, var(--space-2)));
+  padding-right: max(var(--space-2), env(safe-area-inset-right, var(--space-2)));
+  padding-bottom: max(var(--space-2), env(safe-area-inset-bottom, var(--space-2)));
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+    ORIENTATION ADJUSTMENTS
+    Optimize for different screen orientations
+    ───────────────────────────────────────────────────────────────────────────── */
+
+@media screen and (orientation: portrait) {
+  .app-container {
+    min-height: 100vh;
+  }
+}
+
+@media screen and (orientation: landscape) {
+  .app-container {
+    min-height: 100vh;
+  }
+
+  .main-content {
+    padding-bottom: calc(var(--tab-bar-height) + var(--space-6));
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+    KEYBOARD NAVIGATION
+    Better support for keyboard and physical buttons on tablets
+    ───────────────────────────────────────────────────────────────────────────── */
+
+/* Ensure all interactive elements are focusable */
+button,
+a,
+input,
+select,
+[tabindex] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Visible focus ring for keyboard navigation */
+*:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Remove outline for mouse users */
+*:focus:not(:focus-visible) {
+  outline: none;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+    RESPONSIVE ADJUSTMENTS
+    Mobile-first approach with tablet enhancements
+    ───────────────────────────────────────────────────────────────────────────── */
 @media (max-height: 640px) {
   .onboarding__illustration {
     font-size: 72px;
     margin-bottom: var(--space-4);
   }
-  
+
   .onboarding__title {
     font-size: var(--text-2xl);
   }
-  
+
   .session-complete__emoji {
     font-size: 80px;
   }
-  
+
   .session-complete__title {
     font-size: var(--text-3xl);
   }
@@ -1781,17 +2114,19 @@ h1, h2, h3, h4, h5, h6, .brand-font {
   .quiz-word {
     font-size: var(--text-4xl);
   }
-  
+
   .quiz-sound-btn {
     width: 68px;
     height: 68px;
+    min-width: 68px;
+    min-height: 68px;
   }
-  
+
   .stats-row {
     grid-template-columns: repeat(3, 1fr);
     gap: var(--space-2);
   }
-  
+
   .stat-item__value {
     font-size: 20px;
   }
@@ -1805,6 +2140,152 @@ h1, h2, h3, h4, h5, h6, .brand-font {
   .vocabulary-counter {
     justify-content: flex-start;
     padding-left: 12px;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+    TABLET OPTIMIZATIONS (768px and above)
+    Enhanced layout for tablets with more screen real estate
+    ───────────────────────────────────────────────────────────────────────────── */
+@media (min-width: 768px) {
+  :root {
+    --max-width: 768px;
+    --header-height: 70px;
+    --tab-bar-height: 80px;
+  }
+
+  .app-container {
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+  }
+
+  .quiz-word {
+    font-size: calc(var(--text-5xl) * 1.2);
+  }
+
+  .quiz-sound-btn {
+    width: 90px;
+    height: 90px;
+    min-width: 90px;
+    min-height: 90px;
+  }
+
+  .quiz-answer-btn {
+    padding: 28px var(--space-6);
+    font-size: var(--text-lg);
+  }
+
+  .daily-progress-banner,
+  .streak-banner {
+    padding: var(--space-6);
+  }
+
+  .lesson-card {
+    padding: var(--space-5);
+  }
+
+  .lesson-card__icon {
+    width: 60px;
+    height: 60px;
+  }
+
+  .stat-item__value {
+    font-size: 30px;
+  }
+
+  .section__title {
+    font-size: calc(var(--text-xl) * 1.1);
+  }
+
+  .vocabulary-card {
+    padding: var(--space-5);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+    LARGE TABLET / LANDSCAPE (1024px and above)
+    Optimize for larger tablets and landscape orientation
+    ───────────────────────────────────────────────────────────────────────────── */
+@media (min-width: 1024px) {
+  :root {
+    --max-width: 900px;
+  }
+
+  .tab-bar {
+    bottom: calc(var(--safe-bottom) + var(--space-4));
+    height: calc(var(--tab-bar-height) + var(--space-2));
+  }
+
+  .tab-item {
+    font-size: 12px;
+    padding: var(--space-4) 0;
+  }
+
+  .tab-item svg {
+    width: 28px;
+    height: 28px;
+  }
+
+  .main-content {
+    padding: var(--space-8);
+    padding-bottom: calc(var(--tab-bar-height) + var(--space-10));
+  }
+
+  .session-complete__stats {
+    max-width: 400px;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+    LANDSCAPE ORIENTATIONS
+    Adjust layout for landscape mode on all devices
+    ───────────────────────────────────────────────────────────────────────────── */
+@media (orientation: landscape) and (max-height: 600px) {
+  :root {
+    --header-height: 50px;
+    --tab-bar-height: 60px;
+  }
+
+  .onboarding__illustration {
+    font-size: 56px;
+    margin-bottom: var(--space-3);
+  }
+
+  .onboarding__title {
+    font-size: var(--text-xl);
+  }
+
+  .onboarding__subtitle {
+    font-size: var(--text-sm);
+    margin-bottom: var(--space-5);
+  }
+
+  .session-complete__emoji {
+    font-size: 70px;
+    margin-bottom: var(--space-4);
+  }
+
+  .session-complete__title {
+    font-size: var(--text-2xl);
+  }
+
+  .quiz-content {
+    padding: var(--space-4) var(--space-5);
+  }
+
+  .quiz-word {
+    font-size: var(--text-3xl);
+  }
+
+  .daily-progress-banner,
+  .streak-banner {
+    padding: var(--space-4);
+  }
+
+  .profile-avatar {
+    width: 90px;
+    height: 90px;
+    font-size: 44px;
   }
 }
 

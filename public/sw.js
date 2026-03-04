@@ -1,5 +1,5 @@
-const STATIC_CACHE = 'gaba-static-v2';
-const RUNTIME_CACHE = 'gaba-runtime-v2';
+const STATIC_CACHE = 'gaba-static-v3';
+const RUNTIME_CACHE = 'gaba-runtime-v3';
 const APP_SHELL = ['/', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/apple-touch-icon.png'];
 
 self.addEventListener('install', (event) => {
@@ -31,6 +31,27 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url);
   const isSameOrigin = url.origin === self.location.origin;
+
+  // Don't cache data files - always fetch from network
+  if (isSameOrigin && url.pathname.startsWith('/data/')) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (!response || response.status !== 200) {
+            throw new Error('Data file not found');
+          }
+          return response;
+        })
+        .catch((error) => {
+          console.error('Failed to fetch data file:', request.url, error);
+          return new Response('{"error":"Data file not found"}', {
+            status: 404,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        })
+    );
+    return;
+  }
 
   if (request.mode === 'navigate') {
     event.respondWith(

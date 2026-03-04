@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
   Home, BookOpen, User, Play,
   Flame, Zap, CheckCircle, ChevronRight,
@@ -495,17 +495,39 @@ function QuizScreen({ session, onComplete, onClose, onExit }) {
   const [showAnswer, setShowAnswer] = useState(false);
   const [result, setResult] = useState({ correct: 0, total: session.cards.length });
   const { speak, speaking, stop } = useTTS();
+  const touchStartX = useRef(0);
 
   const currentCard = session.cards[currentIndex];
   const progress = ((currentIndex) / session.cards.length) * 100;
 
-  // Auto-play EN pronunciation when new card appears
-  useEffect(() => {
-    if (currentCard) {
-      const timer = setTimeout(() => speak(currentCard.en, 'en'), 300);
-      return () => clearTimeout(timer);
+  // Swipe gestures for better mobile navigation
+  const handleTouchStart = (e) => {
+    touchStartX.current = e.touches[0].clientX;
+  };
+
+  const handleTouchEnd = (e) => {
+    const touchEndX = e.changedTouches[0].clientX;
+    const diff = touchStartX.current - touchEndX;
+
+    // Swipe left - show answer if not shown
+    if (diff > 50 && !showAnswer) {
+      vibrate(15);
+      setShowAnswer(true);
     }
-  }, [currentIndex]);
+    // Swipe right - exit quiz
+    else if (diff < -50) {
+      vibrate(10);
+      stop();
+      onExit();
+    }
+  };
+
+  // Auto-play EN pronunciation when new card appears - disabled for better UX
+  // Users can manually tap to play
+  const handlePlayAudio = () => {
+    vibrate(10);
+    speak(currentCard.en, 'en');
+  };
 
   const handleReveal = () => {
     vibrate(15);
@@ -539,7 +561,13 @@ function QuizScreen({ session, onComplete, onClose, onExit }) {
   const phonetic = formatPhonetic(currentCard.en);
 
   return (
-    <div className="quiz-screen" role="region" aria-label="Procvičování slovíček">
+    <div
+      className="quiz-screen"
+      role="region"
+      aria-label="Procvičování slovíček"
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
       <div className="quiz-header">
         <motion.button
           whileTap={{ scale: 0.9 }}
@@ -628,12 +656,31 @@ function QuizScreen({ session, onComplete, onClose, onExit }) {
               )}
             </AnimatePresence>
 
+            {/* Swipe hint */}
+            {!showAnswer && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 0.5, y: 0 }}
+                transition={{ delay: 1, duration: 0.5 }}
+                style={{
+                  marginTop: '16px',
+                  fontSize: '12px',
+                  color: 'var(--text-tertiary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}
+              >
+                <span>↩ Přetáhni pro odpověď</span>
+              </motion.div>
+            )}
+
             {/* Sound button — English pronunciation */}
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
-              style={{ 
+              style={{
                 marginTop: '24px',
                 display: 'flex',
                 justifyContent: 'center',
@@ -642,15 +689,15 @@ function QuizScreen({ session, onComplete, onClose, onExit }) {
             >
               <motion.button
                 whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.9 }}
+                whileTap={{ scale: 0.95 }}
                 animate={speaking ? { boxShadow: ['0 0 0 0 rgba(50,215,75,0)', '0 0 0 16px rgba(50,215,75,0.2)', '0 0 0 0 rgba(50,215,75,0)'] } : {}}
                 transition={speaking ? { repeat: Infinity, duration: 1.2 } : {}}
-                onClick={() => { vibrate(10); speak(currentCard.en, 'en'); }}
+                onClick={handlePlayAudio}
                 className={`quiz-sound-btn ${speaking ? 'is-playing' : ''}`}
                 aria-label={`Přehrát anglicky: ${currentCard.en}`}
               >
-                <Volume2 size={28} />
-                <span style={{ fontSize: '11px', fontWeight: '700', marginTop: '2px', color: 'var(--text-secondary)' }}>EN</span>
+                <Volume2 size={32} />
+                <span style={{ fontSize: '12px', fontWeight: '700', marginTop: '2px', color: 'var(--text-secondary)' }}>EN</span>
               </motion.button>
             </motion.div>
           </motion.div>
@@ -720,19 +767,19 @@ function QuizScreen({ session, onComplete, onClose, onExit }) {
 }
 
 function DailyProgressRing({ current, goal }) {
-  const radius = 38;
+  const radius = 30;
   const circumference = 2 * Math.PI * radius;
   const percentage = Math.min(current / Math.max(goal, 1), 1);
   const offset = circumference - (percentage * circumference);
   const isComplete = percentage >= 1;
 
   return (
-    <div className="progress-ring" style={{ width: '88px', height: '88px' }}>
-      <svg width="88" height="88" className="progress-ring__circle">
-        <circle className="progress-ring__bg" cx="44" cy="44" r={radius} />
+    <div className="progress-ring" style={{ width: '64px', height: '64px' }}>
+      <svg width="64" height="64" className="progress-ring__circle">
+        <circle className="progress-ring__bg" cx="32" cy="32" r={radius} />
         <motion.circle
           className="progress-ring__fill"
-          cx="44" cy="44" r={radius}
+          cx="32" cy="32" r={radius}
           strokeDasharray={circumference}
           initial={{ strokeDashoffset: circumference }}
           animate={{ strokeDashoffset: offset }}
@@ -741,7 +788,7 @@ function DailyProgressRing({ current, goal }) {
         />
       </svg>
       <div className="progress-ring__text">
-        <span style={{ fontSize: isComplete ? '24px' : '18px' }}>
+        <span style={{ fontSize: isComplete ? '18px' : '16px' }}>
           {isComplete ? '🎉' : current}
         </span>
       </div>
@@ -784,7 +831,7 @@ function HomeScreen({ progress, cards, onStartSession, onNavigate }) {
   }, [progress.xp]);
 
   return (
-    <div className="main-content" id="main-content">
+    <div className="main-content" id="main-content" style={{ paddingBottom: 'calc(72px + 20px)' }}>
       {/* Daily Progress */}
       <motion.div
         initial={{ y: -10, opacity: 0 }}
@@ -813,53 +860,28 @@ function HomeScreen({ progress, cards, onStartSession, onNavigate }) {
         </div>
       </motion.div>
 
-      {/* Streak Banner */}
-      <motion.div
-        initial={{ y: -10, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.1, type: "spring", bounce: 0.3 }}
-        className="streak-banner"
-        role="status"
-        aria-label={`${progress.streak || 0} denní série`}
-      >
-        <motion.div
-          className="streak-banner__icon"
-          aria-hidden="true"
-          animate={{ rotate: [0, -10, 10, 0] }}
-          transition={{ repeat: Infinity, duration: 2, repeatDelay: 3 }}
-        >
-          🔥
-        </motion.div>
-        <div className="streak-banner__content">
-          <div className="streak-banner__title">{progress.streak || 0} denní série</div>
-          <div className="streak-banner__subtitle">
-            {progress.streak > 0 ? 'Skvěle, pokračuj takhle!' : 'Začni svou sérii dnes'}
-          </div>
-        </div>
-      </motion.div>
-
-      {/* Stats */}
+      {/* Stats - Compact */}
       <motion.div
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.2 }}
+        transition={{ delay: 0.1 }}
         className="stats-row"
         role="group"
         aria-label="Statistiky"
       >
-        {['xp', 'cardsLearned', 'lessonsCompleted'].map((stat, i) => (
+        {['xp', 'cardsLearned', 'streak'].map((stat, i) => (
           <motion.div
             key={stat}
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            transition={{ delay: 0.25 + i * 0.1, type: "spring", bounce: 0.5 }}
+            transition={{ delay: 0.15 + i * 0.1, type: "spring", bounce: 0.5 }}
             whileHover={{ scale: 1.05, y: -4 }}
             className="stat-item"
           >
             <div className="stat-item__value">
-              {stat === 'xp' ? progress.xp || 0 : stat === 'cardsLearned' ? progress.cardsLearned || 0 : progress.lessonsCompleted || 0}
+              {stat === 'xp' ? progress.xp || 0 : stat === 'cardsLearned' ? progress.cardsLearned || 0 : progress.streak || 0}
             </div>
-            <div className="stat-item__label">{stat === 'xp' ? 'XP' : stat === 'cardsLearned' ? 'Slov' : 'Lekcí'}</div>
+            <div className="stat-item__label">{stat === 'xp' ? 'XP' : stat === 'cardsLearned' ? 'Slov' : 'Série'}</div>
           </motion.div>
         ))}
       </motion.div>
@@ -869,16 +891,16 @@ function HomeScreen({ progress, cards, onStartSession, onNavigate }) {
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 0.3 }}
+          transition={{ delay: 0.2 }}
           className="section__header"
         >
-          <h2 className="section__title">Dnešní cíle</h2>
+          <h2 className="section__title">Dnešní lekce</h2>
         </motion.div>
 
         <motion.div
           initial={{ x: -20, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
-          transition={{ delay: 0.35 }}
+          transition={{ delay: 0.25 }}
           whileTap={{ scale: 0.98 }}
           className="lesson-card"
           onClick={() => { vibrate(10); onStartSession(dueCount > 0 ? 'review' : 'fresh'); }}
@@ -906,26 +928,15 @@ function HomeScreen({ progress, cards, onStartSession, onNavigate }) {
             className="lesson-card__arrow"
             whileHover={{ x: 8 }}
           >
-            <Play size={24} fill="var(--primary)" color="var(--primary)" />
+            <Play size={20} fill="var(--primary)" color="var(--primary)" />
           </motion.div>
         </motion.div>
-      </div>
 
-      {/* Quick Practice */}
-      <div className="section">
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.4 }}
-          className="section__header"
-        >
-          <h2 className="section__title">Rychlé procvičování</h2>
-        </motion.div>
-
+        {/* Quick Practice - Two compact cards */}
         <motion.div
           initial={{ x: -20, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
-          transition={{ delay: 0.45 }}
+          transition={{ delay: 0.3 }}
           whileTap={{ scale: 0.98 }}
           className="lesson-card"
           onClick={() => { vibrate(10); onStartSession('fresh', 10); }}
@@ -946,54 +957,15 @@ function HomeScreen({ progress, cards, onStartSession, onNavigate }) {
             <div className="lesson-card__meta">Rychlé procvičení</div>
           </div>
           <motion.div className="lesson-card__arrow" whileHover={{ x: 8 }}>
-            <ChevronRight size={20} color="var(--text-muted)" />
+            <ChevronRight size={18} color="var(--text-muted)" />
           </motion.div>
         </motion.div>
 
+        {/* Dental Vocabulary */}
         <motion.div
           initial={{ x: -20, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
-          transition={{ delay: 0.5 }}
-          whileTap={{ scale: 0.98 }}
-          className="lesson-card"
-          onClick={() => { vibrate(10); onStartSession('review', 15); }}
-          role="button"
-          tabIndex={0}
-          aria-label="15 slov k opakování"
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); vibrate(10); onStartSession('review', 15); } }}
-        >
-          <motion.div
-            className="lesson-card__icon"
-            style={{ background: 'var(--accent-ghost)' }}
-            whileHover={{ scale: 1.1, rotate: 5 }}
-          >
-            🔁
-          </motion.div>
-          <div className="lesson-card__content">
-            <div className="lesson-card__title">15 k opakování</div>
-            <div className="lesson-card__meta">Osvoj si správné odpovědi</div>
-          </div>
-          <motion.div className="lesson-card__arrow" whileHover={{ x: 8 }}>
-            <ChevronRight size={20} color="var(--text-muted)" />
-          </motion.div>
-        </motion.div>
-      </div>
-
-      {/* Dental Vocabulary Section */}
-      <div className="section">
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.55 }}
-          className="section__header"
-        >
-          <h2 className="section__title">🦷 Zubní ordinace</h2>
-        </motion.div>
-
-        <motion.div
-          initial={{ x: -20, opacity: 0 }}
-          animate={{ x: 0, opacity: 1 }}
-          transition={{ delay: 0.6 }}
+          transition={{ delay: 0.35 }}
           whileTap={{ scale: 0.98 }}
           className="lesson-card"
           onClick={() => { vibrate(10); onStartSession('dental', 20); }}
@@ -1015,10 +987,10 @@ function HomeScreen({ progress, cards, onStartSession, onNavigate }) {
           </motion.div>
           <div className="lesson-card__content">
             <div className="lesson-card__title">Zubní slovíčka</div>
-            <div className="lesson-card__meta">Anglické názvosloví pro zubaře</div>
+            <div className="lesson-card__meta">Anglické názvosloví</div>
           </div>
           <motion.div className="lesson-card__arrow" whileHover={{ x: 8 }}>
-            <ChevronRight size={20} color="var(--text-muted)" />
+            <ChevronRight size={18} color="var(--text-muted)" />
           </motion.div>
         </motion.div>
       </div>
@@ -1079,13 +1051,13 @@ function VocabularyScreen({ cards, progress, onPlayEN }) {
             <div className="vocabulary-hero__value">{learnedCount}</div>
             <div style={{ fontSize: '20px', fontWeight: '600', opacity: 0.7 }}>/ {totalCards}</div>
           </div>
-          <div className="vocabulary-hero__label">Slovíček jsi se naučil/a ({progressPercent}%)</div>
-          <div style={{ height: '6px', background: 'rgba(255,255,255,0.2)', borderRadius: '3px', marginTop: '12px', overflow: 'hidden' }}>
+<div className="vocabulary-hero__label">Slovíček jsi se naučil/a ({progressPercent}%)</div>
+          <div style={{ height: '8px', background: 'rgba(255,255,255,0.2)', borderRadius: '4px', marginTop: '12px', overflow: 'hidden' }}>
             <motion.div
               initial={{ width: 0 }}
               animate={{ width: `${progressPercent}%` }}
-              transition={{ delay: 0.3, duration: 0.8 }}
-              style={{ height: '100%', background: 'rgba(255,255,255,0.9)', borderRadius: '3px' }}
+              transition={{ delay: 0.3, duration: 0.8, type: "spring" }}
+              style={{ height: '100%', background: 'rgba(255,255,255,0.9)', borderRadius: '4px' }}
             />
           </div>
         </div>
@@ -1455,6 +1427,9 @@ function App() {
             📚
           </motion.div>
           <div className="loading-screen__text" role="status">Načítám lekce...</div>
+          <div className="loading-screen__progress">
+            <div className="loading-screen__progress-bar" />
+          </div>
         </div>
       </div>
     );
@@ -1462,7 +1437,7 @@ function App() {
 
   return (
     <div className="app-container">
-      {/* Skip to content */}
+      {/* Skip to content - Enhanced for accessibility */}
       <a href="#main-content" className="skip-link">Přeskočit na obsah</a>
 
       <AnimatePresence>
