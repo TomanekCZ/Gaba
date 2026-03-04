@@ -39,14 +39,6 @@ export default function VocabularyList({ cards, cardStats, onMarkCardKnown }) {
     const deferredSearch = useDeferredValue(search);
     const [activeTheme, setActiveTheme] = useState('all');
     const [activeStatus, setActiveStatus] = useState('all');
-    const [showMastered, setShowMastered] = useState(() => {
-        if (typeof window === 'undefined') {
-            return true;
-        }
-
-        const saved = window.localStorage.getItem('gaba-show-mastered');
-        return saved === null ? true : saved === '1';
-    });
     const [expandedSections, setExpandedSections] = useState({
         learning: true,
         new: true,
@@ -94,6 +86,15 @@ export default function VocabularyList({ cards, cardStats, onMarkCardKnown }) {
         return counts;
     }, [cards]);
 
+    const themeOptions = useMemo(
+        () =>
+            AVAILABLE_THEME_FILTERS.map((theme) => ({
+                ...theme,
+                count: themeCounts[theme.id] || 0,
+            })).filter((theme) => theme.count > 0),
+        [themeCounts]
+    );
+
     useEffect(() => {
         setVisibleCountBySection({
             learning: PAGE_SIZE,
@@ -102,23 +103,13 @@ export default function VocabularyList({ cards, cardStats, onMarkCardKnown }) {
         });
     }, [deferredSearch, activeTheme]);
 
-    useEffect(() => {
-        if (typeof window === 'undefined') {
-            return;
-        }
-
-        window.localStorage.setItem('gaba-show-mastered', showMastered ? '1' : '0');
-    }, [showMastered]);
-
     const statusChips = [
         { id: 'all', label: 'Vše' },
         { id: 'learning', label: 'K zopakování' },
         { id: 'new', label: 'Nová' },
         { id: 'mastered', label: 'Zvládnutá' },
     ];
-    const sectionOrder = (showMastered ? ['learning', 'new', 'mastered'] : ['learning', 'new']).filter(
-        (status) => activeStatus === 'all' || status === activeStatus
-    );
+    const sectionOrder = ['learning', 'new', 'mastered'].filter((status) => activeStatus === 'all' || status === activeStatus);
     const totalVisible = sectionOrder.reduce((sum, key) => sum + grouped[key].length, 0);
 
     const toggleSection = (key) => {
@@ -148,48 +139,27 @@ export default function VocabularyList({ cards, cardStats, onMarkCardKnown }) {
                         onChange={(event) => setSearch(event.target.value)}
                     />
                 </label>
-                <button
-                    type="button"
-                    className={`vocab-filter-toggle ${showMastered ? 'is-active' : ''}`}
-                    onClick={() => setShowMastered((current) => !current)}
-                >
-                    {showMastered ? 'Skrýt naučené' : 'Zobrazit naučené'}
-                </button>
-                <div className="theme-filters" role="tablist" aria-label="Temata slovicek">
-                    {AVAILABLE_THEME_FILTERS.map((theme) => {
-                        const count = themeCounts[theme.id] || 0;
-                        if (count === 0) {
-                            return null;
-                        }
-
-                        return (
-                            <button
-                                key={theme.id}
-                                type="button"
-                                role="tab"
-                                aria-selected={activeTheme === theme.id}
-                                className={`theme-chip ${activeTheme === theme.id ? 'is-active' : ''}`}
-                                onClick={() => setActiveTheme(theme.id)}
-                            >
-                                <span>{theme.label}</span>
-                                <small>{count}</small>
-                            </button>
-                        );
-                    })}
-                </div>
-                <div className="status-filters" role="tablist" aria-label="Filtr stavu slovíček">
-                    {statusChips.map((chip) => (
-                        <button
-                            key={chip.id}
-                            type="button"
-                            role="tab"
-                            aria-selected={activeStatus === chip.id}
-                            className={`status-chip ${activeStatus === chip.id ? 'is-active' : ''}`}
-                            onClick={() => setActiveStatus(chip.id)}
-                        >
-                            {chip.label}
-                        </button>
-                    ))}
+                <div className="vocab-filter-row">
+                    <label className="vocab-select" htmlFor="theme-filter">
+                        <span>Téma</span>
+                        <select id="theme-filter" value={activeTheme} onChange={(event) => setActiveTheme(event.target.value)}>
+                            {themeOptions.map((theme) => (
+                                <option key={theme.id} value={theme.id}>
+                                    {theme.label} ({theme.count})
+                                </option>
+                            ))}
+                        </select>
+                    </label>
+                    <label className="vocab-select" htmlFor="status-filter">
+                        <span>Stav</span>
+                        <select id="status-filter" value={activeStatus} onChange={(event) => setActiveStatus(event.target.value)}>
+                            {statusChips.map((chip) => (
+                                <option key={chip.id} value={chip.id}>
+                                    {chip.label}
+                                </option>
+                            ))}
+                        </select>
+                    </label>
                 </div>
             </header>
 

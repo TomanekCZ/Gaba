@@ -1028,15 +1028,41 @@ function HomeScreen({ progress, cards, onStartSession, onNavigate }) {
 
 function VocabularyScreen({ cards, progress, onPlayEN }) {
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [visibleCount, setVisibleCount] = useState(24);
+
+  const cardRows = useMemo(() => {
+    return cards.map((card) => {
+      const statRaw = progress.cardStats?.[card.id];
+      const stat = normalizeCardStat(card.id, statRaw || {});
+      const isMastered = stat.lastRating === 'good' || stat.lastRating === 'easy';
+      const isDue = Boolean(statRaw) && isCardDue(stat);
+      const status = isDue ? 'review' : isMastered ? 'mastered' : 'new';
+
+      return { card, stat, status, isMastered };
+    });
+  }, [cards, progress.cardStats]);
 
   const filteredCards = useMemo(() => {
-    if (!search) return cards.slice(0, 50);
-    const q = search.toLowerCase();
-    return cards.filter(c =>
-      c.en.toLowerCase().includes(q) ||
-      c.cz.toLowerCase().includes(q)
-    ).slice(0, 50);
-  }, [cards, search]);
+    const q = search.trim().toLowerCase();
+    return cardRows.filter(({ card, status }) => {
+      const matchesSearch =
+        !q ||
+        card.en.toLowerCase().includes(q) ||
+        card.cz.toLowerCase().includes(q);
+      const matchesStatus = statusFilter === 'all' || status === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [cardRows, search, statusFilter]);
+
+  const visibleCards = useMemo(
+    () => filteredCards.slice(0, visibleCount),
+    [filteredCards, visibleCount]
+  );
+
+  useEffect(() => {
+    setVisibleCount(24);
+  }, [search, statusFilter]);
 
   const learnedCount = useMemo(() => {
     return Object.values(progress.cardStats || {}).filter(s => s.lastRating === 'good' || s.lastRating === 'easy').length;
@@ -1077,6 +1103,21 @@ function VocabularyScreen({ cards, progress, onPlayEN }) {
           />
         </div>
 
+        <div className="vocabulary-controls">
+          <label className="vocabulary-select">
+            <span>Filtr</span>
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+              <option value="all">Vše</option>
+              <option value="review">K zopakování</option>
+              <option value="new">Nová</option>
+              <option value="mastered">Zvládnutá</option>
+            </select>
+          </label>
+          <div className="vocabulary-counter" aria-live="polite">
+            {filteredCards.length} slov
+          </div>
+        </div>
+
         {filteredCards.length === 0 ? (
           <motion.div
             initial={{ opacity: 0 }}
@@ -1090,10 +1131,19 @@ function VocabularyScreen({ cards, progress, onPlayEN }) {
           </motion.div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }} role="list" aria-label="Seznam slovíček">
-            {filteredCards.map((card, i) => {
-              const stat = progress.cardStats[card.id];
-              const isLearned = stat && (stat.lastRating === 'good' || stat.lastRating === 'easy');
+            {visibleCards.map(({ card, stat, isMastered, status }, i) => {
               const phonetic = formatPhonetic(card.en);
+              const strength = Math.max(
+                6,
+                Math.min(
+                  100,
+                  Math.round(
+                    (Math.min(stat.reviewCount || 0, 5) / 5) * 60 +
+                    (Math.min(stat.ease || 1.3, 3.1) - 1.3) * 20 +
+                    (isMastered ? 20 : 0)
+                  )
+                )
+              );
 
               return (
                 <motion.div
@@ -1104,7 +1154,7 @@ function VocabularyScreen({ cards, progress, onPlayEN }) {
                   className="vocabulary-card"
                   role="listitem"
                 >
-                  {isLearned && (
+                  {isMastered && (
                     <div className="vocabulary-card__badge" aria-label="Naučeno">
                       <CheckCircle size={16} />
                     </div>
@@ -1112,6 +1162,9 @@ function VocabularyScreen({ cards, progress, onPlayEN }) {
                   <div className="vocabulary-card__content">
                     <div className="vocabulary-card__en">{card.en}</div>
                     <div className="vocabulary-card__cz">{card.cz}</div>
+                    <div className={`vocabulary-card__status vocabulary-card__status--${status}`}>
+                      {status === 'review' ? 'K zopakování' : status === 'mastered' ? 'Zvládnutá' : 'Nová'}
+                    </div>
                     <div
                       style={{
                         fontFamily: 'monospace',
@@ -1122,6 +1175,9 @@ function VocabularyScreen({ cards, progress, onPlayEN }) {
                       }}
                     >
                       {phonetic}
+                    </div>
+                    <div className="vocabulary-strength" aria-label={`Síla ${strength}%`}>
+                      <span style={{ width: `${strength}%` }} />
                     </div>
                   </div>
                   <div className="vocabulary-card__actions">
@@ -1139,6 +1195,16 @@ function VocabularyScreen({ cards, progress, onPlayEN }) {
                 </motion.div>
               );
             })}
+
+            {filteredCards.length > visibleCount && (
+              <button
+                type="button"
+                className="vocabulary-load-more"
+                onClick={() => setVisibleCount((value) => value + 24)}
+              >
+                Načíst další
+              </button>
+            )}
           </div>
         )}
       </div>
