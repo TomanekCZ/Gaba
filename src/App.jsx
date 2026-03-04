@@ -1,1440 +1,1594 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import {
-    Activity,
-    ArrowRight,
-    BookText,
-    BookOpen,
-    CheckCircle2,
-    Clock3,
-    Compass,
-    Flame,
-    GraduationCap,
-    Home,
-    Play,
-    RefreshCcw,
-    RotateCcw,
-    Settings as SettingsIcon,
-    Sparkles,
-    Target,
-    TrendingUp,
-    UserCircle2,
+  Home, BookOpen, User, Play,
+  Flame, Zap, CheckCircle, ChevronRight,
+  Volume2, RefreshCcw, X, ArrowRight, Star, Trophy, Search,
+  Sun, Moon, Monitor, Award
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
-import StudySession from './components/StudySession';
-import VocabularyList from './components/VocabularyList';
-import Settings from './components/Settings';
+import { useTTS } from './hooks/useTTS';
 import { sampleItems } from './utils/random';
-import { formatRelativeDue, getDuePriority, isCardDue, normalizeCardStat, scheduleCardReview } from './utils/srs';
-import { usePwaInstall } from './hooks/usePwaInstall';
-import { classifyCardTheme } from './utils/themes';
-import { AVAILABLE_THEME_FILTERS, getThemeLabel } from './utils/themes';
+import { isCardDue, normalizeCardStat, scheduleCardReview } from './utils/srs';
+import Confetti from './components/Confetti';
+import { checkAchievements, getAchievementById, AchievementsScreen } from './components/Achievements';
+import { formatPhonetic } from './utils/phonetic';
 
-const PROGRESS_STORAGE_KEY = 'gaba-progress-v9';
-const BASE_LEVEL_TAG = 'EN-5000';
-const BASE_BAND_SIZE = 100;
-const PRIMARY_CARDS_URL = '/data/slovicka-lite.json';
-const FALLBACK_CARDS_URL = '/data/slovicka.json';
-const SESSION_HISTORY_LIMIT = 45;
+const STORAGE_KEY = 'gaba-progress-v11';
+const THEME_KEY = 'gaba-theme';
 
 const DEFAULT_PROGRESS = {
-    completedLessonIds: [],
-    sessionsCompleted: 0,
-    cardsReviewed: 0,
-    masteredCards: 0,
-    cardStats: {},
-    streakDays: 0,
-    lastLessonId: null,
-    lastLessonTitle: null,
-    lastStudiedAt: null,
-    sessionHistory: [],
+  xp: 0,
+  streak: 0,
+  lastStudyDate: null,
+  lessonsCompleted: 0,
+  cardsLearned: 0,
+  dailyGoal: 15,
+  cardStats: {},
 };
 
-function normalizeCard(card, index, lessonId) {
-    const normalized = {
-        id: card.id || `${lessonId}-card-${index + 1}`,
-        en: card.en || '',
-        cz: card.cz || '',
-        meanings: Array.isArray(card.meanings) ? card.meanings : [],
-        sourceCardId: card.sourceCardId || card.id || `${lessonId}-card-${index + 1}`,
-        type: card.type || 'Slovíčko',
-        phonetic: card.phonetic || '',
-        context: card.context || card.example || '',
-        contextCz: card.contextCz || card.exampleCz || '',
-        tags: Array.isArray(card.tags) ? card.tags : [],
-        frequencyTag: card.frequencyTag || null,
-    };
+const MOTIVATIONAL_MESSAGES = {
+  perfect: ['🔥 Perfektní!', '⭐ Ohromující!', '🏆 Mistrovská práce!'],
+  great: ['👏 Skvěle!', '✨ Výborně!', '💪 Paráda!'],
+  good: ['👍 Dobrá práce!', '😊 Pokračuj takhle!', '🙂 Zvládáš to!'],
+  bad: ['💪 Zítra to bude lepší!', '🌟 Každý den se zlepšuješ!', '⭐ Zkus to znovu!'],
+};
 
-    return {
-        ...normalized,
-        themeId: card.themeId || classifyCardTheme(normalized),
-    };
+function vibrate(pattern) {
+  if (typeof window !== 'undefined' && window.navigator && window.navigator.vibrate) {
+    window.navigator.vibrate(pattern);
+  }
 }
 
-function normalizeLesson(lesson, source) {
-    const cards = Array.isArray(lesson.cards) ? lesson.cards : [];
-
-    return {
-        id: lesson.id,
-        title: lesson.title || 'Lekce bez názvu',
-        description: lesson.description || '',
-        source,
-        goal: lesson.goal || '',
-        studyFocus: lesson.studyFocus || '',
-        direction: lesson.direction || 'en-to-cz',
-        cards: cards.map((card, index) => normalizeCard(card, index, lesson.id)),
-    };
+function loadProgress() {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (!stored) return DEFAULT_PROGRESS;
+    return { ...DEFAULT_PROGRESS, ...JSON.parse(stored) };
+  } catch {
+    return DEFAULT_PROGRESS;
+  }
 }
 
-function buildLesson({ id, title, description, goal, studyFocus, cards }, source) {
-    return normalizeLesson(
-        {
-            id,
-            title,
-            description,
-            goal,
-            studyFocus,
-            cards,
-            direction: 'en-to-cz',
-        },
-        source
-    );
+function saveProgress(progress) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
 }
 
-function buildReviewLesson(cards, size, title, description) {
-    const limitedCards = cards.slice(0, Math.min(size, cards.length));
-
-    return buildLesson(
-        {
-            id: `review-${Date.now()}`,
-            title,
-            description,
-            goal: 'Krátký návrat k tomu, co se ještě neudrželo.',
-            studyFocus: 'Dívej se na slovo, odhal význam a reaguj jedním gestem.',
-            cards: limitedCards,
-        },
-        'review'
-    );
+function loadTheme() {
+  try {
+    return localStorage.getItem(THEME_KEY) || 'system';
+  } catch {
+    return 'system';
+  }
 }
 
-function buildFreshLesson(cards, size, title, description, source = 'today') {
-    const limitedCards = sampleItems(cards, Math.min(size, cards.length));
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem(THEME_KEY, theme);
 
-    return buildLesson(
-        {
-            id: `${source}-${Date.now()}`,
-            title,
-            description,
-            goal: 'Krátká nová dávka bez zbytečných rozhodnutí navíc.',
-            studyFocus: 'Otevři kartu, odhal význam a pokračuj dál.',
-            cards: limitedCards,
-        },
-        source
-    );
+  // Update meta theme-color for mobile browsers
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) {
+    if (theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      meta.setAttribute('content', '#1C1C1E');
+    } else {
+      meta.setAttribute('content', '#FFFFFF');
+    }
+  }
 }
 
-function loadStoredProgress() {
-    try {
-        const stored = localStorage.getItem(PROGRESS_STORAGE_KEY);
-        if (!stored) {
-            return DEFAULT_PROGRESS;
-        }
-
-        const parsed = JSON.parse(stored);
-        const parsedCardStats =
-            parsed.cardStats && typeof parsed.cardStats === 'object' && !Array.isArray(parsed.cardStats)
-                ? Object.fromEntries(
-                    Object.entries(parsed.cardStats).map(([cardId, stat]) => [cardId, normalizeCardStat(cardId, stat)])
-                )
-                : {};
-
-        return {
-            ...DEFAULT_PROGRESS,
-            ...parsed,
-            completedLessonIds: Array.isArray(parsed.completedLessonIds) ? parsed.completedLessonIds : [],
-            cardStats: parsedCardStats,
-            sessionHistory: Array.isArray(parsed.sessionHistory) ? parsed.sessionHistory : [],
-        };
-    } catch (error) {
-        console.warn('Failed to restore progress:', error);
-        localStorage.removeItem(PROGRESS_STORAGE_KEY);
-        return DEFAULT_PROGRESS;
-    }
+function normalizeCard(card, index) {
+  return {
+    id: card.id || `card-${index}`,
+    en: card.en || '',
+    cz: card.cz || '',
+    meanings: Array.isArray(card.meanings) ? card.meanings : [],
+    frequencyTag: card.frequencyTag || 'EN-5000',
+  };
 }
 
-function persistToStorage(key, value) {
-    try {
-        localStorage.setItem(key, JSON.stringify(value));
-    } catch (error) {
-        console.warn(`Failed to persist ${key}:`, error);
-    }
+const THEME_ICONS = {
+  light: Sun,
+  dark: Moon,
+  system: Monitor,
+};
+
+const THEME_CYCLE = ['light', 'dark', 'system'];
+
+function ThemeToggle({ theme, onToggle }) {
+  const Icon = THEME_ICONS[theme] || Monitor;
+  const labels = { light: 'Světlý režim', dark: 'Tmavý režim', system: 'Systémový režim' };
+
+  return (
+    <motion.button
+      whileTap={{ scale: 0.9 }}
+      whileHover={{ scale: 1.05 }}
+      className="theme-toggle"
+      onClick={onToggle}
+      aria-label={labels[theme] || 'Přepnout motiv'}
+      title={labels[theme]}
+      initial={{ rotate: -90, opacity: 0 }}
+      animate={{ rotate: 0, opacity: 1 }}
+      transition={{ type: "spring", bounce: 0.4 }}
+    >
+      <Icon size={20} />
+    </motion.button>
+  );
 }
 
-function toDayKey(dateIso) {
-    const date = new Date(dateIso);
-    const year = date.getFullYear();
-    const month = `${date.getMonth() + 1}`.padStart(2, '0');
-    const day = `${date.getDate()}`.padStart(2, '0');
-    return `${year}-${month}-${day}`;
+function Onboarding({ onComplete }) {
+  const [step, setStep] = useState(0);
+  const [dailyGoal, setDailyGoal] = useState(15);
+
+  const steps = [
+    {
+      emoji: '👋',
+      title: 'Vítej v Gaba!',
+      subtitle: 'Naučíš se anglicky zábavně a efektivně.',
+      content: (
+        <div style={{ textAlign: 'center', padding: '20px 0' }}>
+          <motion.div
+            initial={{ scale: 0, rotate: -180 }}
+            animate={{ scale: 1, rotate: 0 }}
+            transition={{ type: "spring", bounce: 0.6, delay: 0.2 }}
+            style={{ fontSize: '96px', marginBottom: '16px' }}
+          >
+            🎯
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+            style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginTop: '24px' }}
+          >
+            {['✨', '🚀', '💡'].map((item, i) => (
+              <motion.span
+                key={i}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.5 + i * 0.1 }}
+                style={{ fontSize: '32px' }}
+              >
+                {item}
+              </motion.span>
+            ))}
+          </motion.div>
+        </div>
+      ),
+    },
+    {
+      emoji: '🎯',
+      title: 'Kolik slov denně?',
+      subtitle: 'Můžeš to kdykoli změnit.',
+      content: (
+        <div className="option-grid" role="radiogroup" aria-label="Denní cíl">
+          {[10, 15, 20, 30].map((n, i) => (
+            <motion.button
+              key={n}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.1 }}
+              whileTap={{ scale: 0.92 }}
+              whileHover={{ scale: 1.02, y: -4 }}
+              className={`option-card ${dailyGoal === n ? 'is-selected' : ''}`}
+              onClick={() => {
+                vibrate(10);
+                setDailyGoal(n);
+              }}
+              role="radio"
+              aria-checked={dailyGoal === n}
+              aria-label={`${n} slov denně`}
+            >
+              <div className="option-card__label">{n}</div>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 500 }}>slov</div>
+            </motion.button>
+          ))}
+        </div>
+      ),
+    },
+    {
+      emoji: '💪',
+      title: 'Jdeme na to!',
+      subtitle: 'Každý den trochu, a za měsíc uvidíš výsledky.',
+      content: (
+        <div style={{ textAlign: 'center' }}>
+          <motion.div
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ type: "spring", bounce: 0.5, delay: 0.2 }}
+            style={{
+              background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%)',
+              padding: '40px 32px',
+              borderRadius: '28px',
+              marginBottom: '16px',
+              boxShadow: '0 20px 60px var(--primary-glow)',
+              position: 'relative',
+              overflow: 'hidden'
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ type: "spring", bounce: 0.6, delay: 0.4 }}
+              style={{ fontSize: '64px', marginBottom: '12px' }}
+            >
+              🔥
+            </motion.div>
+            <motion.div
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.5 }}
+              style={{ fontWeight: '800', fontSize: '32px', color: 'white', marginBottom: '4px' }}
+            >
+              {dailyGoal} slov
+            </motion.div>
+            <motion.div
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.6 }}
+              style={{ fontWeight: '600', color: 'rgba(255,255,255,0.9)', fontSize: '15px' }}
+            >
+              každý den
+            </motion.div>
+          </motion.div>
+        </div>
+      ),
+    },
+  ];
+
+  const current = steps[step];
+  const isLast = step === steps.length - 1;
+
+  return (
+    <div className="onboarding" role="dialog" aria-label="Průvodce aplikací">
+      <motion.div
+        key={step}
+        initial={{ opacity: 0, x: 30 }}
+        animate={{ opacity: 1, x: 0 }}
+        exit={{ opacity: 0, x: -30 }}
+        transition={{ type: "spring", bounce: 0.3 }}
+        className="onboarding__step"
+      >
+        <motion.div
+          key={`emoji-${step}`}
+          initial={{ scale: 0.5, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ type: "spring", bounce: 0.5, delay: 0.1 }}
+          className="onboarding__illustration"
+          aria-hidden="true"
+        >
+          {current.emoji}
+        </motion.div>
+        <motion.h1
+          key={`title-${step}`}
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 0.15 }}
+          className="onboarding__title"
+        >
+          {current.title}
+        </motion.h1>
+        <motion.p
+          key={`subtitle-${step}`}
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 0.2 }}
+          className="onboarding__subtitle"
+        >
+          {current.subtitle}
+        </motion.p>
+        {current.content}
+      </motion.div>
+
+      <div className="onboarding__actions">
+        {step > 0 && (
+          <motion.button
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            whileTap={{ scale: 0.96 }}
+            className="btn btn--secondary btn--block"
+            onClick={() => {
+              vibrate(10);
+              setStep(step - 1);
+            }}
+          >
+            Zpět
+          </motion.button>
+        )}
+        <motion.button
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          whileTap={{ scale: 0.96 }}
+          whileHover={{ scale: 1.02 }}
+          className="btn btn--primary btn--block btn--lg"
+          onClick={() => {
+            vibrate(15);
+            isLast ? onComplete(dailyGoal) : setStep(step + 1);
+          }}
+        >
+          {isLast ? 'Začít učit!' : 'Pokračovat'}
+          {isLast && <motion.span style={{ marginLeft: '8px' }}>→</motion.span>}
+        </motion.button>
+      </div>
+
+      <motion.div
+        className="onboarding__dots"
+        aria-label={`Krok ${step + 1} z ${steps.length}`}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.3 }}
+      >
+        {steps.map((_, i) => (
+          <motion.div
+            key={i}
+            layout
+            className={`onboarding__dot ${i === step ? 'onboarding__dot--active' : 'onboarding__dot--inactive'}`}
+            aria-current={i === step ? 'step' : undefined}
+          />
+        ))}
+      </motion.div>
+    </div>
+  );
 }
 
-function appendSessionHistory(currentHistory, entry) {
-    const history = Array.isArray(currentHistory) ? currentHistory : [];
-    return [...history, entry].slice(-SESSION_HISTORY_LIMIT);
+function SessionComplete({ result, onContinue, onClose }) {
+  const [showConfetti, setShowConfetti] = useState(false);
+  const percentage = Math.round((result.correct / result.total) * 100);
+
+  let message, emoji, bgColor;
+  if (percentage === 100) {
+    message = MOTIVATIONAL_MESSAGES.perfect[Math.floor(Math.random() * 3)];
+    emoji = '🏆';
+    bgColor = '#32D74B';
+  } else if (percentage >= 70) {
+    message = MOTIVATIONAL_MESSAGES.great[Math.floor(Math.random() * 3)];
+    emoji = '⭐';
+    bgColor = '#0A84FF';
+  } else if (percentage >= 40) {
+    message = MOTIVATIONAL_MESSAGES.good[Math.floor(Math.random() * 3)];
+    emoji = '👍';
+    bgColor = '#FF9F0A';
+  } else {
+    message = MOTIVATIONAL_MESSAGES.bad[Math.floor(Math.random() * 3)];
+    emoji = '💪';
+    bgColor = '#FF453A';
+  }
+
+  useEffect(() => {
+    if (percentage === 100) {
+      vibrate([40, 60, 100, 40, 40]);
+      setShowConfetti(true);
+    } else if (percentage >= 70) {
+      vibrate([30, 50, 30]);
+    } else {
+      vibrate([20, 20]);
+    }
+  }, [percentage]);
+
+  const xpEarned = result.correct * 10;
+  const streakBonus = result.total === result.correct ? 5 : 0;
+
+  return (
+    <>
+      {showConfetti && <Confetti type="burst" onComplete={() => setShowConfetti(false)} />}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="session-complete"
+        role="status"
+        aria-live="polite"
+        aria-label="Výsledky procvičování"
+      >
+        <motion.div
+          initial={{ scale: 0, rotate: -180 }}
+          animate={{ scale: 1, rotate: 0 }}
+          transition={{ type: "spring", bounce: 0.6, delay: 0.1 }}
+          className="session-complete__emoji"
+          aria-hidden="true"
+        >
+          {emoji}
+        </motion.div>
+        <motion.h2
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 0.2 }}
+          className="session-complete__title"
+        >
+          {message}
+        </motion.h2>
+
+        <motion.div
+          initial={{ y: 30, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 0.3 }}
+          className="session-complete__stats"
+        >
+          <motion.div
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ delay: 0.4, type: "spring" }}
+            className="session-complete__stat"
+          >
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.5, type: "spring", bounce: 0.5 }}
+              className="session-complete__stat-value"
+              style={{ color: bgColor }}
+            >
+              {result.correct}/{result.total}
+            </motion.div>
+            <div className="session-complete__stat-label">SPRÁVNĚ</div>
+          </motion.div>
+          <motion.div
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ delay: 0.45, type: "spring" }}
+            className="session-complete__stat"
+          >
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.55, type: "spring", bounce: 0.5 }}
+              className="session-complete__stat-value"
+              style={{ color: '#BF5AF2' }}
+            >
+              +{xpEarned + streakBonus}
+            </motion.div>
+            <div className="session-complete__stat-label">XP</div>
+          </motion.div>
+        </motion.div>
+
+        <motion.div
+          initial={{ width: 0, opacity: 0 }}
+          animate={{ width: '100%', opacity: 1 }}
+          transition={{ delay: 0.6 }}
+          style={{ maxWidth: '340px', width: '100%' }}
+        >
+          <div className="session-complete__progress-bar" role="progressbar" aria-valuenow={percentage} aria-valuemin={0} aria-valuemax={100} aria-label={`${percentage}% správně`}>
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${percentage}%` }}
+              transition={{ delay: 0.8, duration: 1, type: "spring", bounce: 0 }}
+              style={{
+                height: '100%',
+                background: `linear-gradient(90deg, ${bgColor}, var(--primary))`,
+                borderRadius: 'inherit',
+                boxShadow: '0 0 20px var(--primary-glow)'
+              }}
+            />
+          </div>
+        </motion.div>
+
+        <motion.div
+          initial={{ y: 30, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 0.7 }}
+          style={{ marginTop: 'auto' }}
+        >
+          <motion.button
+            whileTap={{ scale: 0.96 }}
+            whileHover={{ scale: 1.02 }}
+            className="btn btn--primary btn--block btn--lg"
+            onClick={() => {
+              vibrate(15);
+              onContinue();
+            }}
+            style={{ maxWidth: '320px', marginTop: '24px' }}
+          >
+            Pokračovat
+            <motion.span
+              initial={{ x: -5 }}
+              animate={{ x: 0 }}
+              transition={{ delay: 1, repeat: Infinity, repeatType: "reverse", duration: 0.6 }}
+            >
+              →
+            </motion.span>
+          </motion.button>
+        </motion.div>
+      </motion.div>
+    </>
+  );
 }
 
-function buildLearningStage({ masteredRatio, sessionsCompleted, streakDays, recentSuccessRate }) {
-    if (masteredRatio >= 0.66 && recentSuccessRate >= 0.78 && streakDays >= 5) {
-        return {
-            id: 'automatic',
-            title: 'Automatizace',
-            subtitle: 'Slova drzi i po delsi pauze.',
-            recommendation: 'Pridej vice novych slov v kratsich blocich.',
-        };
-    }
+function QuizScreen({ session, onComplete, onClose, onExit }) {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [showAnswer, setShowAnswer] = useState(false);
+  const [result, setResult] = useState({ correct: 0, total: session.cards.length });
+  const { speak, speaking, stop } = useTTS();
 
-    if (masteredRatio >= 0.32 || sessionsCompleted >= 8) {
-        return {
-            id: 'stabilizing',
-            title: 'Stabilizace',
-            subtitle: 'Zaklad drzi, ale cast se vraci.',
-            recommendation: 'Drz denni rytmus a lehce zvys opakovani.',
-        };
-    }
+  const currentCard = session.cards[currentIndex];
+  const progress = ((currentIndex) / session.cards.length) * 100;
 
-    return {
-        id: 'entry',
-        title: 'Rozjezd',
-        subtitle: 'Budujes prvni navaznost a navyk.',
-        recommendation: 'Kratke denni session jsou ted nejdulezitejsi.',
-    };
+  // Auto-play EN pronunciation when new card appears
+  useEffect(() => {
+    if (currentCard) {
+      const timer = setTimeout(() => speak(currentCard.en, 'en'), 300);
+      return () => clearTimeout(timer);
+    }
+  }, [currentIndex]);
+
+  const handleReveal = () => {
+    vibrate(15);
+    setShowAnswer(true);
+  };
+
+  const handleAnswer = (wasCorrect) => {
+    vibrate(wasCorrect ? [20, 30, 20] : [40]);
+    stop();
+
+    setResult(r => ({
+      ...r,
+      correct: r.correct + (wasCorrect ? 1 : 0)
+    }));
+
+    setTimeout(() => {
+      if (currentIndex < session.cards.length - 1) {
+        setCurrentIndex(i => i + 1);
+        setShowAnswer(false);
+      } else {
+        onComplete({
+          correct: result.correct + (wasCorrect ? 1 : 0),
+          total: session.cards.length
+        });
+      }
+    }, 400);
+  };
+
+  if (!currentCard) return null;
+
+  const phonetic = formatPhonetic(currentCard.en);
+
+  return (
+    <div className="quiz-screen" role="region" aria-label="Procvičování slovíček">
+      <div className="quiz-header">
+        <motion.button
+          whileTap={{ scale: 0.9 }}
+          className="btn btn--ghost"
+          onClick={() => { vibrate(10); stop(); onExit(); }}
+          aria-label="Zavřít procvičování"
+        >
+          <X size={24} />
+        </motion.button>
+        <div className="quiz-progress" role="progressbar" aria-valuenow={Math.round(progress)} aria-valuemin={0} aria-valuemax={100} aria-label="Postup procvičování">
+          <motion.div
+            className="quiz-progress__fill"
+            initial={{ width: 0 }}
+            animate={{ width: `${progress}%` }}
+            transition={{ type: "spring", bounce: 0 }}
+          />
+        </div>
+        <motion.div
+          key={currentIndex}
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          style={{ fontWeight: '800', minWidth: '40px', textAlign: 'right', fontSize: '15px', color: 'var(--text-secondary)' }}
+          aria-label={`Karta ${currentIndex + 1} z ${session.cards.length}`}
+        >
+          {currentIndex + 1}/{session.cards.length}
+        </motion.div>
+      </div>
+
+      <motion.div
+        key={currentIndex}
+        initial={{ opacity: 0, x: 30 }}
+        animate={{ opacity: 1, x: 0 }}
+        exit={{ opacity: 0, x: -30 }}
+        transition={{ type: "spring", bounce: 0.3 }}
+        className="quiz-content"
+      >
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', width: '100%' }}>
+          <motion.div
+            key={`word-${currentIndex}`}
+            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            transition={{ type: "spring", bounce: 0.4, delay: 0.1 }}
+            style={{ textAlign: 'center' }}
+          >
+            <div className="quiz-word">{currentCard.en}</div>
+
+            {/* Phonetic pronunciation - always visible */}
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              style={{
+                fontFamily: 'monospace',
+                fontSize: '16px',
+                color: 'var(--primary)',
+                fontWeight: 600,
+                marginTop: '12px',
+                padding: '6px 12px',
+                background: 'var(--primary-ghost)',
+                borderRadius: '8px',
+                display: 'inline-block',
+              }}
+            >
+              {phonetic}
+            </motion.div>
+
+            <AnimatePresence mode="wait">
+              {showAnswer && (
+                <motion.div
+                  key="answer"
+                  initial={{ opacity: 0, y: -20, scale: 0.9 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  transition={{ type: "spring", bounce: 0.4 }}
+                  className="quiz-answer"
+                  style={{
+                    color: 'var(--primary)',
+                    fontSize: '28px',
+                    fontWeight: '800',
+                    margin: '24px 0'
+                  }}
+                  aria-live="assertive"
+                >
+                  {currentCard.cz}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Sound button — English pronunciation */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              style={{ 
+                marginTop: '24px',
+                display: 'flex',
+                justifyContent: 'center',
+                width: '100%'
+              }}
+            >
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.9 }}
+                animate={speaking ? { boxShadow: ['0 0 0 0 rgba(50,215,75,0)', '0 0 0 16px rgba(50,215,75,0.2)', '0 0 0 0 rgba(50,215,75,0)'] } : {}}
+                transition={speaking ? { repeat: Infinity, duration: 1.2 } : {}}
+                onClick={() => { vibrate(10); speak(currentCard.en, 'en'); }}
+                className={`quiz-sound-btn ${speaking ? 'is-playing' : ''}`}
+                aria-label={`Přehrát anglicky: ${currentCard.en}`}
+              >
+                <Volume2 size={28} />
+                <span style={{ fontSize: '11px', fontWeight: '700', marginTop: '2px', color: 'var(--text-secondary)' }}>EN</span>
+              </motion.button>
+            </motion.div>
+          </motion.div>
+        </div>
+
+        <div style={{ width: '100%', maxWidth: '320px', marginTop: 'auto', paddingBottom: '32px' }}>
+          {!showAnswer ? (
+            <motion.button
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+              whileTap={{ scale: 0.96 }}
+              whileHover={{ scale: 1.02 }}
+              className="btn btn--primary btn--lg btn--block"
+              onClick={handleReveal}
+              style={{ padding: '20px', fontSize: '18px' }}
+            >
+              Zobrazit odpověď
+              <motion.span
+                initial={{ y: 0 }}
+                animate={{ y: [0, 4, 0] }}
+                transition={{ delay: 0.5, repeat: Infinity, duration: 1.5 }}
+                style={{ marginLeft: '8px' }}
+              >
+                ↓
+              </motion.span>
+            </motion.button>
+          ) : (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="quiz-answer-buttons"
+            >
+              <motion.button
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ delay: 0.1 }}
+                whileTap={{ scale: 0.94 }}
+                whileHover={{ scale: 1.02, y: -2 }}
+                className="quiz-answer-btn quiz-answer-btn--wrong"
+                onClick={() => handleAnswer(false)}
+                aria-label="Špatná odpověď"
+              >
+                <X size={24} />
+                Špatně
+              </motion.button>
+              <motion.button
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ delay: 0.15 }}
+                whileTap={{ scale: 0.94 }}
+                whileHover={{ scale: 1.02, y: -2 }}
+                className="quiz-answer-btn quiz-answer-btn--correct"
+                onClick={() => handleAnswer(true)}
+                aria-label="Správná odpověď"
+              >
+                <CheckCircle size={24} />
+                Správně
+              </motion.button>
+            </motion.div>
+          )}
+        </div>
+      </motion.div>
+    </div>
+  );
 }
 
-function levelFromFrequencyTag(tag) {
-    if (tag === 'EN-5000') {
-        return 'A1';
-    }
-    if (tag === 'EN-10000') {
-        return 'A2';
-    }
-    if (tag === 'EN-20000') {
-        return 'B1';
-    }
-    return 'B2+';
+function DailyProgressRing({ current, goal }) {
+  const radius = 38;
+  const circumference = 2 * Math.PI * radius;
+  const percentage = Math.min(current / Math.max(goal, 1), 1);
+  const offset = circumference - (percentage * circumference);
+  const isComplete = percentage >= 1;
+
+  return (
+    <div className="progress-ring" style={{ width: '88px', height: '88px' }}>
+      <svg width="88" height="88" className="progress-ring__circle">
+        <circle className="progress-ring__bg" cx="44" cy="44" r={radius} />
+        <motion.circle
+          className="progress-ring__fill"
+          cx="44" cy="44" r={radius}
+          strokeDasharray={circumference}
+          initial={{ strokeDashoffset: circumference }}
+          animate={{ strokeDashoffset: offset }}
+          transition={{ duration: 1, delay: 0.3, type: 'spring', bounce: 0 }}
+          style={{ stroke: isComplete ? 'var(--primary)' : 'var(--secondary)' }}
+        />
+      </svg>
+      <div className="progress-ring__text">
+        <span style={{ fontSize: isComplete ? '24px' : '18px' }}>
+          {isComplete ? '🎉' : current}
+        </span>
+      </div>
+    </div>
+  );
 }
 
-function getDayDifference(previousDateIso) {
-    if (!previousDateIso) {
-        return null;
-    }
+function HomeScreen({ progress, cards, onStartSession, onNavigate }) {
+  const [dueCount, setDueCount] = useState(0);
+  const [newCount, setNewCount] = useState(0);
 
-    const previousDate = new Date(previousDateIso);
-    const now = new Date();
-    const previous = new Date(previousDate.getFullYear(), previousDate.getMonth(), previousDate.getDate());
-    const current = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  useEffect(() => {
+    if (!cards.length) return;
 
-    return Math.round((current - previous) / 86400000);
-}
+    let due = 0;
+    let newWords = 0;
 
-function computeStreak(lastStudiedAt) {
-    const dayDifference = getDayDifference(lastStudiedAt);
-
-    if (dayDifference === null) {
-        return 1;
-    }
-    if (dayDifference === 0) {
-        return null;
-    }
-    if (dayDifference === 1) {
-        return 'increment';
-    }
-
-    return 1;
-}
-
-function formatLastStudied(lastStudiedAt) {
-    if (!lastStudiedAt) {
-        return 'Ještě nic';
-    }
-
-    const dayDifference = getDayDifference(lastStudiedAt);
-    if (dayDifference === 0) {
-        return 'Dnes';
-    }
-    if (dayDifference === 1) {
-        return 'Včera';
-    }
-
-    return new Intl.DateTimeFormat('cs-CZ', {
-        day: 'numeric',
-        month: 'short',
-    }).format(new Date(lastStudiedAt));
-}
-
-function isStudyCandidate(card) {
-    const en = String(card.en || '').trim();
-    const frequencyTag = String(card.frequencyTag || '').trim();
-
-    if (!en || !frequencyTag) {
-        return false;
-    }
-
-    const hasAnswer = Array.isArray(card.meanings) ? card.meanings.length > 0 : Boolean(card.cz);
-    return hasAnswer;
-}
-
-function buildUpdatedCardStats(existingStats, cardResults) {
-    if (!Array.isArray(cardResults) || !cardResults.length) {
-        return existingStats;
-    }
-
-    const nextStats = { ...existingStats };
-
-    cardResults.forEach((result) => {
-        if (!result?.sourceCardId) {
-            return;
-        }
-
-        const cardId = result.sourceCardId;
-        const previous = normalizeCardStat(cardId, nextStats[cardId]);
-        const scheduled = scheduleCardReview(previous, result.rating, result.reviewedAt || new Date().toISOString());
-
-        nextStats[cardId] = {
-            ...scheduled,
-            en: result.en || previous.en,
-            cz: result.cz || previous.cz,
-            lessonId: result.lessonId || previous.lessonId,
-            lessonTitle: result.lessonTitle || previous.lessonTitle,
-        };
+    cards.forEach(card => {
+      const stat = progress.cardStats[card.id];
+      if (!stat) {
+        newWords++;
+      } else if (isCardDue(normalizeCardStat(card.id, stat))) {
+        due++;
+      }
     });
 
-    return nextStats;
-}
+    setDueCount(due);
+    setNewCount(newWords);
+  }, [cards, progress.cardStats]);
 
-function buildReviewCandidates(cardStats, cardLookup) {
-    return Object.values(cardStats || {})
-        .map((stat) => {
-            const normalized = normalizeCardStat(stat?.cardId, stat);
-            const card = cardLookup.get(normalized.cardId);
+  const todayLearned = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    return Object.values(progress.cardStats || {}).filter(s =>
+      s.lastReviewedAt && s.lastReviewedAt.startsWith(today)
+    ).length;
+  }, [progress.cardStats]);
 
-            if (!card) {
-                return null;
-            }
+  const dailyXP = useMemo(() => {
+    return progress.xp || 0;
+  }, [progress.xp]);
 
-            return {
-                card,
-                stat: normalized,
-                shouldReview: isCardDue(normalized),
-                score: getDuePriority(normalized),
-            };
-        })
-        .filter(Boolean)
-        .sort((a, b) => b.score - a.score);
-}
+  return (
+    <div className="main-content" id="main-content">
+      {/* Daily Progress */}
+      <motion.div
+        initial={{ y: -10, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ type: "spring", bounce: 0.3 }}
+        className="daily-progress-banner"
+        role="status"
+        aria-label={`Dnešní pokrok: ${todayLearned} z ${progress.dailyGoal} slov`}
+      >
+        <DailyProgressRing current={todayLearned} goal={progress.dailyGoal} />
+        <div className="daily-progress-banner__content">
+          <div className="daily-progress-banner__title">
+            {todayLearned >= progress.dailyGoal ? 'Splněno! 🎉' : 'Dnešní cíl'}
+          </div>
+          <div className="daily-progress-banner__subtitle">
+            {todayLearned} / {progress.dailyGoal} slov
+          </div>
+          <div className="daily-progress-banner__bar">
+            <motion.div
+              className="daily-progress-banner__bar-fill"
+              initial={{ width: 0 }}
+              animate={{ width: `${Math.min((todayLearned / progress.dailyGoal) * 100, 100)}%` }}
+              transition={{ delay: 0.5, duration: 0.8, type: 'spring', bounce: 0 }}
+            />
+          </div>
+        </div>
+      </motion.div>
 
-function NoticeToast({ notice }) {
-    if (!notice) {
-        return null;
-    }
-
-    return (
+      {/* Streak Banner */}
+      <motion.div
+        initial={{ y: -10, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ delay: 0.1, type: "spring", bounce: 0.3 }}
+        className="streak-banner"
+        role="status"
+        aria-label={`${progress.streak || 0} denní série`}
+      >
         <motion.div
-            className={`notice-toast notice-toast--${notice.type}`}
-            initial={{ opacity: 0, y: -12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -12 }}
+          className="streak-banner__icon"
+          aria-hidden="true"
+          animate={{ rotate: [0, -10, 10, 0] }}
+          transition={{ repeat: Infinity, duration: 2, repeatDelay: 3 }}
         >
-            {notice.message}
+          🔥
         </motion.div>
-    );
-}
+        <div className="streak-banner__content">
+          <div className="streak-banner__title">{progress.streak || 0} denní série</div>
+          <div className="streak-banner__subtitle">
+            {progress.streak > 0 ? 'Skvěle, pokračuj takhle!' : 'Začni svou sérii dnes'}
+          </div>
+        </div>
+      </motion.div>
 
-function LoadingState() {
-    return (
-        <section className="surface-card surface-card--state">
-            <div className="state-row">
-                <div className="state-row__icon">
-                    <Sparkles size={20} strokeWidth={2.4} />
-                </div>
-                <div>
-                    <h2>Načítám slovíčka</h2>
-                    <p>Připravuju dnešní tok učení z lokální databáze.</p>
-                </div>
+      {/* Stats */}
+      <motion.div
+        initial={{ y: 20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ delay: 0.2 }}
+        className="stats-row"
+        role="group"
+        aria-label="Statistiky"
+      >
+        {['xp', 'cardsLearned', 'lessonsCompleted'].map((stat, i) => (
+          <motion.div
+            key={stat}
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ delay: 0.25 + i * 0.1, type: "spring", bounce: 0.5 }}
+            whileHover={{ scale: 1.05, y: -4 }}
+            className="stat-item"
+          >
+            <div className="stat-item__value">
+              {stat === 'xp' ? progress.xp || 0 : stat === 'cardsLearned' ? progress.cardsLearned || 0 : progress.lessonsCompleted || 0}
             </div>
-        </section>
-    );
-}
+            <div className="stat-item__label">{stat === 'xp' ? 'XP' : stat === 'cardsLearned' ? 'Slov' : 'Lekcí'}</div>
+          </motion.div>
+        ))}
+      </motion.div>
 
-function ErrorState({ onRetry }) {
-    return (
-        <section className="surface-card surface-card--state">
-            <div className="state-row">
-                <div className="state-row__icon state-row__icon--danger">
-                    <RefreshCcw size={20} strokeWidth={2.4} />
-                </div>
-                <div>
-                    <h2>Nedaří se načíst data</h2>
-                    <p>Zkontroluj připojení a zkus to znovu.</p>
-                </div>
-            </div>
-            <div className="state-actions">
-                <button type="button" className="button button--primary" onClick={onRetry}>
-                    <RefreshCcw size={18} strokeWidth={2.4} />
-                    Načíst znovu
-                </button>
-            </div>
-        </section>
-    );
-}
-
-function EmptyState() {
-    return (
-        <section className="surface-card surface-card--state">
-            <div className="state-row">
-                <div className="state-row__icon state-row__icon--warning">
-                    <BookOpen size={20} strokeWidth={2.4} />
-                </div>
-                <div>
-                    <h2>V databázi chybí obsah</h2>
-                    <p>Základní balík slovíček EN-5000 není dostupný pro dnešní studium.</p>
-                </div>
-            </div>
-        </section>
-    );
-}
-
-function TodayHero({ title, subtitle, primaryLabel, secondaryLabel, onPrimary, onSecondary, meta }) {
-    return (
-        <section className="today-hero">
-            <div className="today-hero__copy">
-                <span className="eyebrow">Dnešek</span>
-                <h1>{title}</h1>
-                <p>{subtitle}</p>
-            </div>
-
-            <div className="today-hero__meta">
-                {meta.map((item) => {
-                    const Icon = item.icon;
-                    return (
-                        <div key={item.label} className="hero-pill">
-                            <Icon size={15} strokeWidth={2.4} />
-                            <div>
-                                <span>{item.label}</span>
-                                <strong>{item.value}</strong>
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
-
-            <div className="today-hero__actions">
-                <button type="button" className="button button--primary" onClick={onPrimary}>
-                    <Play size={18} strokeWidth={2.4} />
-                    {primaryLabel}
-                </button>
-                <button type="button" className="button button--secondary" onClick={onSecondary}>
-                    <ArrowRight size={18} strokeWidth={2.4} />
-                    {secondaryLabel}
-                </button>
-            </div>
-        </section>
-    );
-}
-
-function JourneyCard({ progressPercent, bandProgress }) {
-    const visibleBands = bandProgress.slice(0, 12);
-
-    return (
-        <section className="surface-card journey-card">
-            <div className="journey-card__header">
-                <div>
-                    <h2>Cesta EN-5000</h2>
-                    <p>Postup nejdůležitější slovní zásobou.</p>
-                </div>
-                <strong>{progressPercent}%</strong>
-            </div>
-
-            <div className="journey-progress">
-                <span className="journey-progress__fill" style={{ width: `${progressPercent}%` }} />
-            </div>
-
-            <div className="journey-grid">
-                {visibleBands.map((band, index) => (
-                    <div
-                        key={band.lesson.id}
-                        className={`journey-dot ${band.completed ? 'is-done' : band.locked ? 'is-locked' : 'is-active'}`}
-                        title={band.lesson.title}
-                    >
-                        {band.completed ? <CheckCircle2 size={13} strokeWidth={2.6} /> : index + 1}
-                    </div>
-                ))}
-            </div>
-        </section>
-    );
-}
-
-function LearningCurveCard({ stage, curvePoints, recentSuccessRate, reviewedLastWeek }) {
-    const maxValue = curvePoints.reduce((max, point) => Math.max(max, point.value), 1);
-
-    return (
-        <section className="surface-card curve-card">
-            <div className="curve-card__header">
-                <div>
-                    <span className="eyebrow">Učící křivka</span>
-                    <h2>{stage.title}</h2>
-                    <p>{stage.subtitle}</p>
-                </div>
-                <div className={`curve-stage curve-stage--${stage.id}`}>
-                    <TrendingUp size={14} strokeWidth={2.5} />
-                    <strong>{Math.round(recentSuccessRate * 100)}%</strong>
-                </div>
-            </div>
-
-            <div className="curve-bars" aria-label="Trend poslednich 7 dni">
-                {curvePoints.map((point) => (
-                    <div key={point.day} className="curve-bar-wrap" title={`${point.dayLabel}: ${point.value}`}>
-                        <span className="curve-bar" style={{ height: `${Math.max(8, Math.round((point.value / maxValue) * 100))}%` }} />
-                        <small>{point.shortDay}</small>
-                    </div>
-                ))}
-            </div>
-
-            <div className="curve-meta">
-                <div className="curve-meta__item">
-                    <Activity size={15} strokeWidth={2.4} />
-                    <span>{reviewedLastWeek} opakovani / 7 dni</span>
-                </div>
-                <div className="curve-meta__item">
-                    <Target size={15} strokeWidth={2.4} />
-                    <span>{stage.recommendation}</span>
-                </div>
-            </div>
-        </section>
-    );
-}
-
-function QuickActionCard({ action, onStart }) {
-    const Icon = action.icon;
-
-    return (
-        <motion.button
-            type="button"
-            className="quick-action"
-            onClick={() => onStart(action)}
-            whileTap={{ scale: 0.985 }}
+      {/* Daily Quest */}
+      <div className="section">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.3 }}
+          className="section__header"
         >
-            <div className="quick-action__icon">
-                <Icon size={18} strokeWidth={2.4} />
+          <h2 className="section__title">Dnešní cíle</h2>
+        </motion.div>
+
+        <motion.div
+          initial={{ x: -20, opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          transition={{ delay: 0.35 }}
+          whileTap={{ scale: 0.98 }}
+          className="lesson-card"
+          onClick={() => { vibrate(10); onStartSession(dueCount > 0 ? 'review' : 'fresh'); }}
+          role="button"
+          tabIndex={0}
+          aria-label={dueCount > 0 ? `${dueCount} slov k opakování` : 'Procvič nová slovíčka'}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); vibrate(10); onStartSession(dueCount > 0 ? 'review' : 'fresh'); } }}
+        >
+          <motion.div
+            className="lesson-card__icon"
+            style={{ background: dueCount > 0 ? 'var(--warning-ghost)' : 'var(--primary-ghost)' }}
+            whileHover={{ scale: 1.1, rotate: 5 }}
+          >
+            {dueCount > 0 ? '🔄' : '✨'}
+          </motion.div>
+          <div className="lesson-card__content">
+            <div className="lesson-card__title">
+              {dueCount > 0 ? `${dueCount} slov k opakování` : 'Procvič nová slovíčka'}
             </div>
-            <div className="quick-action__copy">
-                <strong>{action.title}</strong>
-                <span>{action.description}</span>
+            <div className="lesson-card__meta">
+              {dueCount > 0 ? 'Potřebuješ zopakovat' : `${newCount} nových slov k naučení`}
             </div>
-            <small>{action.meta}</small>
-        </motion.button>
-    );
+          </div>
+          <motion.div
+            className="lesson-card__arrow"
+            whileHover={{ x: 8 }}
+          >
+            <Play size={24} fill="var(--primary)" color="var(--primary)" />
+          </motion.div>
+        </motion.div>
+      </div>
+
+      {/* Quick Practice */}
+      <div className="section">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.4 }}
+          className="section__header"
+        >
+          <h2 className="section__title">Rychlé procvičování</h2>
+        </motion.div>
+
+        <motion.div
+          initial={{ x: -20, opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          transition={{ delay: 0.45 }}
+          whileTap={{ scale: 0.98 }}
+          className="lesson-card"
+          onClick={() => { vibrate(10); onStartSession('fresh', 10); }}
+          role="button"
+          tabIndex={0}
+          aria-label="10 nových slov — rychlé procvičení"
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); vibrate(10); onStartSession('fresh', 10); } }}
+        >
+          <motion.div
+            className="lesson-card__icon"
+            style={{ background: 'var(--secondary-ghost)' }}
+            whileHover={{ scale: 1.1, rotate: -5 }}
+          >
+            ⚡
+          </motion.div>
+          <div className="lesson-card__content">
+            <div className="lesson-card__title">10 nových slov</div>
+            <div className="lesson-card__meta">Rychlé procvičení</div>
+          </div>
+          <motion.div className="lesson-card__arrow" whileHover={{ x: 8 }}>
+            <ChevronRight size={20} color="var(--text-muted)" />
+          </motion.div>
+        </motion.div>
+
+        <motion.div
+          initial={{ x: -20, opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          transition={{ delay: 0.5 }}
+          whileTap={{ scale: 0.98 }}
+          className="lesson-card"
+          onClick={() => { vibrate(10); onStartSession('review', 15); }}
+          role="button"
+          tabIndex={0}
+          aria-label="15 slov k opakování"
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); vibrate(10); onStartSession('review', 15); } }}
+        >
+          <motion.div
+            className="lesson-card__icon"
+            style={{ background: 'var(--accent-ghost)' }}
+            whileHover={{ scale: 1.1, rotate: 5 }}
+          >
+            🔁
+          </motion.div>
+          <div className="lesson-card__content">
+            <div className="lesson-card__title">15 k opakování</div>
+            <div className="lesson-card__meta">Osvoj si správné odpovědi</div>
+          </div>
+          <motion.div className="lesson-card__arrow" whileHover={{ x: 8 }}>
+            <ChevronRight size={20} color="var(--text-muted)" />
+          </motion.div>
+        </motion.div>
+      </div>
+
+      {/* Dental Vocabulary Section */}
+      <div className="section">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.55 }}
+          className="section__header"
+        >
+          <h2 className="section__title">🦷 Zubní ordinace</h2>
+        </motion.div>
+
+        <motion.div
+          initial={{ x: -20, opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          transition={{ delay: 0.6 }}
+          whileTap={{ scale: 0.98 }}
+          className="lesson-card"
+          onClick={() => { vibrate(10); onStartSession('dental', 20); }}
+          role="button"
+          tabIndex={0}
+          aria-label="Zubní slovíčka — anglické názvosloví"
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); vibrate(10); onStartSession('dental', 20); } }}
+          style={{
+            background: 'linear-gradient(135deg, var(--bg-elevated) 0%, var(--primary-ghost) 100%)',
+            border: '2px solid var(--primary)',
+          }}
+        >
+          <motion.div
+            className="lesson-card__icon"
+            style={{ background: 'linear-gradient(135deg, #32D74B 0%, #0A84FF 100%)' }}
+            whileHover={{ scale: 1.1, rotate: -5 }}
+          >
+            🦷
+          </motion.div>
+          <div className="lesson-card__content">
+            <div className="lesson-card__title">Zubní slovíčka</div>
+            <div className="lesson-card__meta">Anglické názvosloví pro zubaře</div>
+          </div>
+          <motion.div className="lesson-card__arrow" whileHover={{ x: 8 }}>
+            <ChevronRight size={20} color="var(--text-muted)" />
+          </motion.div>
+        </motion.div>
+      </div>
+    </div>
+  );
 }
 
-function StartHereCard({ title, subtitle, onPrimary, onSecondary, secondaryLabel, streakDays, dailyReviewed, dailyGoal }) {
-    const progressPercent = dailyGoal > 0 ? Math.min(100, Math.round((dailyReviewed / dailyGoal) * 100)) : 0;
+function VocabularyScreen({ cards, progress, onPlayEN }) {
+  const [search, setSearch] = useState('');
 
-    return (
-        <section className="surface-card start-card">
-            <div className="section-copy">
-                <span className="eyebrow">Kde začít</span>
-                <h2>{title}</h2>
-                <p>{subtitle}</p>
-            </div>
+  const filteredCards = useMemo(() => {
+    if (!search) return cards.slice(0, 50);
+    const q = search.toLowerCase();
+    return cards.filter(c =>
+      c.en.toLowerCase().includes(q) ||
+      c.cz.toLowerCase().includes(q)
+    ).slice(0, 50);
+  }, [cards, search]);
 
-            <div className="start-stats">
-                <div className="start-streak">
-                    <Flame size={15} strokeWidth={2.4} />
-                    <strong>{streakDays || 0} dní v řadě</strong>
-                </div>
-                <div className="start-goal">
-                    <div className="start-goal__row">
-                        <span>Dnešní cíl</span>
-                        <strong>
-                            {dailyReviewed}/{dailyGoal}
-                        </strong>
+  const learnedCount = useMemo(() => {
+    return Object.values(progress.cardStats || {}).filter(s => s.lastRating === 'good' || s.lastRating === 'easy').length;
+  }, [progress.cardStats]);
+
+  const totalCards = cards.length;
+  const progressPercent = totalCards > 0 ? Math.round((learnedCount / totalCards) * 100) : 0;
+
+  return (
+    <div className="main-content" id="main-content">
+      <div className="section">
+        <div className="vocabulary-hero">
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+            <div className="vocabulary-hero__value">{learnedCount}</div>
+            <div style={{ fontSize: '20px', fontWeight: '600', opacity: 0.7 }}>/ {totalCards}</div>
+          </div>
+          <div className="vocabulary-hero__label">Slovíček jsi se naučil/a ({progressPercent}%)</div>
+          <div style={{ height: '6px', background: 'rgba(255,255,255,0.2)', borderRadius: '3px', marginTop: '12px', overflow: 'hidden' }}>
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${progressPercent}%` }}
+              transition={{ delay: 0.3, duration: 0.8 }}
+              style={{ height: '100%', background: 'rgba(255,255,255,0.9)', borderRadius: '3px' }}
+            />
+          </div>
+        </div>
+
+        <div className="vocabulary-search">
+          <Search size={20} className="vocabulary-search__icon" />
+          <input
+            type="text"
+            placeholder="Hledat slovo..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="vocabulary-search__input"
+            aria-label="Hledat slovíčko"
+            id="vocabulary-search"
+          />
+        </div>
+
+        {filteredCards.length === 0 ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="empty-state"
+            role="status"
+          >
+            <div className="empty-state__icon" aria-hidden="true">🔍</div>
+            <div className="empty-state__title">Nic jsme nenašli</div>
+            <div className="empty-state__text">Zkus hledat něco jiného.</div>
+          </motion.div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }} role="list" aria-label="Seznam slovíček">
+            {filteredCards.map((card, i) => {
+              const stat = progress.cardStats[card.id];
+              const isLearned = stat && (stat.lastRating === 'good' || stat.lastRating === 'easy');
+              const phonetic = formatPhonetic(card.en);
+
+              return (
+                <motion.div
+                  key={card.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: Math.min(i * 0.03, 0.4) }}
+                  className="vocabulary-card"
+                  role="listitem"
+                >
+                  {isLearned && (
+                    <div className="vocabulary-card__badge" aria-label="Naučeno">
+                      <CheckCircle size={16} />
                     </div>
-                    <div className="start-goal__bar">
-                        <span style={{ width: `${progressPercent}%` }} />
-                    </div>
-                </div>
-            </div>
-
-            <div className="start-card__actions">
-                <button type="button" className="button button--primary" onClick={onPrimary}>
-                    <Play size={18} strokeWidth={2.4} />
-                    Pokračovat v učení
-                </button>
-                <button type="button" className="button button--secondary" onClick={onSecondary}>
-                    <ArrowRight size={18} strokeWidth={2.4} />
-                    {secondaryLabel}
-                </button>
-            </div>
-        </section>
-    );
-}
-
-function ThemePathsCard({ themes, selectedThemeId, onSelectTheme, onStartTheme }) {
-    return (
-        <section className="surface-card theme-paths">
-            <div className="section-copy">
-                <h2>Vyber téma</h2>
-                <p>Zvol oblast, kterou chceš trénovat, a spusť krátkou session.</p>
-            </div>
-
-            <div className="theme-paths__grid">
-                {themes.map((theme) => (
-                    <button
-                        key={theme.id}
-                        type="button"
-                        className={`theme-path ${selectedThemeId === theme.id ? 'is-active' : ''}`}
-                        onClick={() => onSelectTheme(theme.id)}
+                  )}
+                  <div className="vocabulary-card__content">
+                    <div className="vocabulary-card__en">{card.en}</div>
+                    <div className="vocabulary-card__cz">{card.cz}</div>
+                    <div
+                      style={{
+                        fontFamily: 'monospace',
+                        fontSize: '12px',
+                        color: 'var(--primary)',
+                        fontWeight: 600,
+                        marginTop: '4px',
+                      }}
                     >
-                        <strong>{theme.label}</strong>
-                        <span>{theme.total} slov</span>
-                        <small>{theme.due > 0 ? `${theme.due} k opakování` : `${theme.mastered} umím`}</small>
-                    </button>
-                ))}
-            </div>
-
-            <button type="button" className="button button--secondary theme-paths__start" onClick={() => onStartTheme(selectedThemeId)}>
-                <Sparkles size={17} strokeWidth={2.4} />
-                Učit téma: {getThemeLabel(selectedThemeId)}
-            </button>
-        </section>
-    );
-}
-
-function LessonsScreen({ themes, onStartTheme }) {
-    return (
-        <section className="lessons-screen">
-            <div className="section-copy">
-                <h2>Lekce a témata</h2>
-                <p>Vyber jednu oblast a drž se jí pár dní pro stabilní pokrok.</p>
-            </div>
-
-            <div className="lesson-grid">
-                {themes.map((theme) => {
-                    const percent = theme.total ? Math.round((theme.mastered / theme.total) * 100) : 0;
-                    return (
-                        <article key={theme.id} className="lesson-card">
-                            <div className="lesson-card__head">
-                                <span className="lesson-card__badge">{theme.level}</span>
-                                <strong>{theme.label}</strong>
-                            </div>
-                            <p>
-                                {theme.mastered}/{theme.total} zvládnuto
-                            </p>
-                            <div className="lesson-card__progress">
-                                <span style={{ width: `${percent}%` }} />
-                            </div>
-                            <button type="button" className="button button--secondary" onClick={() => onStartTheme(theme.id)}>
-                                <Play size={16} strokeWidth={2.4} />
-                                Spustit lekci
-                            </button>
-                        </article>
-                    );
-                })}
-            </div>
-        </section>
-    );
-}
-
-function SideNav({ activeTab, onTabChange, streakDays }) {
-    const items = [
-        { id: 'today', label: 'Dnes', icon: Home },
-        { id: 'lessons', label: 'Lekce', icon: Compass },
-        { id: 'vocabulary', label: 'Slovník', icon: BookText },
-        { id: 'profile', label: 'Profil', icon: UserCircle2 },
-    ];
-
-    return (
-        <aside className="sidebar">
-            <div className="sidebar__brand">
-                <div className="brand">
-                    <div className="brand__mark">
-                        <GraduationCap size={22} strokeWidth={2.5} />
+                      {phonetic}
                     </div>
-                    <div>
-                        <span className="eyebrow">Gaba English</span>
-                        <strong className="brand__title">Study</strong>
-                    </div>
-                </div>
-            </div>
-
-            <nav className="sidebar__nav">
-                {items.map((item) => {
-                    const Icon = item.icon;
-                    return (
-                        <button
-                            key={item.id}
-                            type="button"
-                            className={`sidebar__item ${activeTab === item.id ? 'is-active' : ''}`}
-                            onClick={() => onTabChange(item.id)}
-                        >
-                            <Icon size={19} strokeWidth={2.5} />
-                            <span>{item.label}</span>
-                        </button>
-                    );
-                })}
-            </nav>
-
-            <div className="sidebar__footer">
-                <div className="streak-badge">
-                    <Flame size={14} strokeWidth={2.5} />
-                    {streakDays || 0} dní
-                </div>
-            </div>
-        </aside>
-    );
+                  </div>
+                  <div className="vocabulary-card__actions">
+                    <motion.button
+                      whileTap={{ scale: 0.85 }}
+                      onClick={() => { vibrate(10); onPlayEN(card.en); }}
+                      className="vocabulary-card__sound"
+                      aria-label={`Anglicky: ${card.en}`}
+                      title="🇬🇧 English"
+                    >
+                      <Volume2 size={18} />
+                      <span className="vocabulary-card__sound-label">EN</span>
+                    </motion.button>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
-function MobileTabBar({ activeTab, onTabChange }) {
-    return (
-        <nav className="tab-bar">
-            <button type="button" className={`tab-bar__item ${activeTab === 'today' ? 'is-active' : ''}`} onClick={() => onTabChange('today')}>
-                <Home size={20} strokeWidth={2.5} />
-                <span>Dnes</span>
-            </button>
-            <button type="button" className={`tab-bar__item ${activeTab === 'lessons' ? 'is-active' : ''}`} onClick={() => onTabChange('lessons')}>
-                <Compass size={20} strokeWidth={2.5} />
-                <span>Lekce</span>
-            </button>
-            <button type="button" className={`tab-bar__item ${activeTab === 'vocabulary' ? 'is-active' : ''}`} onClick={() => onTabChange('vocabulary')}>
-                <BookText size={20} strokeWidth={2.5} />
-                <span>Slovník</span>
-            </button>
-            <button type="button" className={`tab-bar__item ${activeTab === 'profile' ? 'is-active' : ''}`} onClick={() => onTabChange('profile')}>
-                <SettingsIcon size={20} strokeWidth={2.5} />
-                <span>Profil</span>
-            </button>
-        </nav>
-    );
+function ProfileScreen({ progress, onReset, theme, onCycleTheme }) {
+  const THEME_ICONS = { light: Sun, dark: Moon, system: Monitor };
+  const Icon = THEME_ICONS[theme] || Monitor;
+  const labels = { light: 'Světlý režim', dark: 'Tmavý režim', system: 'Systémový režim' };
+
+  return (
+    <div className="main-content" id="main-content">
+      <div className="section">
+        <div className="profile-section">
+          <div className="profile-avatar" aria-hidden="true">
+            🎓
+          </div>
+          <h2 className="profile-name">Student</h2>
+        </div>
+
+        {/* Theme Toggle */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="lesson-card"
+          onClick={onCycleTheme}
+          style={{ cursor: 'pointer', marginBottom: '16px' }}
+          whileTap={{ scale: 0.98 }}
+        >
+          <div
+            className="lesson-card__icon"
+            style={{ background: 'var(--bg-tertiary)' }}
+          >
+            <Icon size={24} color="var(--text)" />
+          </div>
+          <div className="lesson-card__content">
+            <div className="lesson-card__title">Vzhled</div>
+            <div className="lesson-card__meta">{labels[theme] || 'Systémový'}</div>
+          </div>
+          <ChevronRight size={20} color="var(--text-muted)" />
+        </motion.div>
+
+        <div className="stats-row" role="group" aria-label="Statistiky profilu">
+          <div className="stat-item">
+            <div className="stat-item__value" style={{ color: 'var(--warning)' }}>🔥 {progress.streak || 0}</div>
+            <div className="stat-item__label">Série</div>
+          </div>
+          <div className="stat-item">
+            <div className="stat-item__value" style={{ color: 'var(--secondary)' }}>⚡ {progress.xp || 0}</div>
+            <div className="stat-item__label">XP</div>
+          </div>
+          <div className="stat-item">
+            <div className="stat-item__value" style={{ color: 'var(--primary)' }}>📚 {progress.cardsLearned || 0}</div>
+            <div className="stat-item__label">Slov</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="section" style={{ marginTop: 'auto', paddingTop: '32px' }}>
+        <motion.button
+          whileTap={{ scale: 0.96 }}
+          className="btn btn--danger btn--3d btn--block btn--lg profile-danger-btn"
+          onClick={() => {
+            vibrate(20);
+            onReset();
+          }}
+          aria-label="Vymazat veškerý postup"
+        >
+          <RefreshCcw size={20} />
+          Vymazat postup
+        </motion.button>
+      </div>
+    </div>
+  );
 }
 
 function App() {
-    const [progress, setProgress] = useState(() => loadStoredProgress());
-    const [sessionLesson, setSessionLesson] = useState(null);
-    const [ankiCards, setAnkiCards] = useState([]);
-    const [libraryStatus, setLibraryStatus] = useState('loading');
-    const [notice, setNotice] = useState(null);
-    const [reloadToken, setReloadToken] = useState(0);
-    const [activeTab, setActiveTab] = useState('today');
-    const [selectedThemeId, setSelectedThemeId] = useState(() =>
-        typeof window !== 'undefined' ? localStorage.getItem('gaba-active-theme') || 'travel' : 'travel'
-    );
-    const [theme, setTheme] = useState(() => (typeof window !== 'undefined' ? localStorage.getItem('gaba-theme') || 'system' : 'system'));
+  const [progress, setProgress] = useState(() => loadProgress());
+  const [activeTab, setActiveTab] = useState('home');
+  const [showOnboarding, setShowOnboarding] = useState(() => !localStorage.getItem('gaba-onboarded'));
+  const [cards, setCards] = useState([]);
+  const [dentalCards, setDentalCards] = useState([]);
+  const [session, setSession] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [theme, setTheme] = useState(() => loadTheme());
+  const [newAchievements, setNewAchievements] = useState([]);
+  const [showAchievementToast, setShowAchievementToast] = useState(null);
+  const { speak } = useTTS();
 
-    const { canInstall, isInstalled, isIos, install } = usePwaInstall();
+  // Apply theme on mount and changes
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
 
-    useEffect(() => {
-        localStorage.setItem('gaba-theme', theme);
-        if (theme === 'dark') {
-            document.documentElement.setAttribute('data-theme', 'dark');
-        } else if (theme === 'light') {
-            document.documentElement.setAttribute('data-theme', 'light');
-        } else {
-            document.documentElement.removeAttribute('data-theme');
-        }
-    }, [theme]);
-
-    useEffect(() => {
-        localStorage.setItem('gaba-active-theme', selectedThemeId);
-    }, [selectedThemeId]);
-
-    useEffect(() => {
-        const controller = new AbortController();
-
-        const loadCards = async () => {
-            setLibraryStatus('loading');
-
-            try {
-                const tryFetch = async (url) => {
-                    const response = await fetch(url, { signal: controller.signal });
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}`);
-                    }
-                    return response.json();
-                };
-
-                let parsedCards;
-                try {
-                    parsedCards = await tryFetch(PRIMARY_CARDS_URL);
-                } catch (primaryError) {
-                    console.warn('Failed to load lite deck, falling back to full deck.', primaryError);
-                    parsedCards = await tryFetch(FALLBACK_CARDS_URL);
-                }
-
-                if (!Array.isArray(parsedCards) || !parsedCards.length) {
-                    throw new Error('Soubor neobsahuje žádné karty.');
-                }
-
-                setAnkiCards(parsedCards);
-                setLibraryStatus('ready');
-            } catch (error) {
-                if (error.name === 'AbortError') {
-                    return;
-                }
-
-                console.error('Failed to load Slovicka JSON:', error);
-                setAnkiCards([]);
-                setLibraryStatus('error');
-                setNotice({
-                    type: 'error',
-                    message: `Nepodařilo se načíst slovíčka: ${error.message}`,
-                });
-            }
-        };
-
-        loadCards();
-
-        return () => {
-            controller.abort();
-        };
-    }, [reloadToken]);
-
-    useEffect(() => {
-        persistToStorage(PROGRESS_STORAGE_KEY, progress);
-    }, [progress]);
-
-    useEffect(() => {
-        if (!notice) {
-            return undefined;
-        }
-
-        const timeout = window.setTimeout(() => {
-            setNotice(null);
-        }, 3600);
-
-        return () => {
-            window.clearTimeout(timeout);
-        };
-    }, [notice]);
-
-    const studyCards = useMemo(() => ankiCards.filter(isStudyCandidate), [ankiCards]);
-    const libraryCards = useMemo(() => studyCards.map((card, index) => normalizeCard(card, index, 'library')), [studyCards]);
-    const libraryCardMap = useMemo(() => new Map(libraryCards.map((card) => [card.sourceCardId, card])), [libraryCards]);
-    const baseCards = useMemo(() => libraryCards.filter((card) => card.frequencyTag === BASE_LEVEL_TAG), [libraryCards]);
-
-    const baseDeck = useMemo(() => {
-        if (!baseCards.length) {
-            return null;
-        }
-
-        return buildLesson(
-            {
-                id: 'base-deck',
-                title: 'Základní slovní zásoba',
-                description: 'Hlavní cesta pro každodenní angličtinu.',
-                goal: 'Jeden hlavní tok místo několika režimů.',
-                studyFocus: 'Krátké, pravidelné, bez rušení.',
-                cards: baseCards,
-            },
-            'core'
-        );
-    }, [baseCards]);
-
-    const baseBandLessons = useMemo(() => {
-        if (!baseCards.length) {
-            return [];
-        }
-
-        const totalBands = Math.ceil(baseCards.length / BASE_BAND_SIZE);
-        return Array.from({ length: totalBands }, (_, index) => {
-            const start = index * BASE_BAND_SIZE;
-            const end = Math.min(start + BASE_BAND_SIZE, baseCards.length);
-            const cards = baseCards.slice(start, end);
-
-            return buildLesson(
-                {
-                    id: `base-band-${index + 1}`,
-                    title: `Blok ${index + 1}`,
-                    description: `${cards.length} slov v hlavní cestě.`,
-                    goal: `Plynulé zvládnutí bloku ${index + 1} z ${totalBands}.`,
-                    studyFocus: 'Postupně od známější zásoby k dalším slovům.',
-                    cards,
-                },
-                'band'
-            );
-        });
-    }, [baseCards]);
-
-    const cardStats = progress.cardStats || {};
-
-    const bandProgress = useMemo(() => {
-        const rows = baseBandLessons.map((lesson) => {
-            let reviewed = 0;
-            let mastered = 0;
-
-            lesson.cards.forEach((card) => {
-                const stat = cardStats[card.sourceCardId];
-                if (!stat) {
-                    return;
-                }
-
-                reviewed += 1;
-                if (stat.lastRating === 'good' || stat.lastRating === 'easy') {
-                    mastered += 1;
-                }
-            });
-
-            const masteryRatio = lesson.cards.length ? mastered / lesson.cards.length : 0;
-            const reviewedRatio = lesson.cards.length ? reviewed / lesson.cards.length : 0;
-            const completed = reviewedRatio >= 0.7 && masteryRatio >= 0.6;
-
-            return {
-                lesson,
-                completed,
-                locked: false,
-            };
-        });
-
-        for (let index = 0; index < rows.length; index += 1) {
-            if (index === 0) {
-                continue;
-            }
-            rows[index].locked = !rows[index - 1].completed;
-        }
-
-        return rows;
-    }, [baseBandLessons, cardStats]);
-
-    const recommendedBand = useMemo(() => {
-        const nextUnlocked = bandProgress.find((item) => !item.locked && !item.completed);
-        if (nextUnlocked) {
-            return nextUnlocked;
-        }
-
-        return [...bandProgress].reverse().find((item) => !item.locked) || null;
-    }, [bandProgress]);
-
-    const reviewCandidates = useMemo(() => buildReviewCandidates(cardStats, libraryCardMap), [cardStats, libraryCardMap]);
-    const dueCards = useMemo(() => reviewCandidates.filter((item) => item.shouldReview).map((item) => item.card), [reviewCandidates]);
-    const nextDueLabel = reviewCandidates.length ? formatRelativeDue(reviewCandidates[0].stat?.dueAt) : 'dnes';
-
-    const nextStepCards = useMemo(() => {
-        if (recommendedBand) {
-            const unseen = recommendedBand.lesson.cards.filter((card) => !cardStats[card.sourceCardId]);
-            if (unseen.length) {
-                return unseen;
-            }
-            return recommendedBand.lesson.cards;
-        }
-
-        if (!baseDeck) {
-            return [];
-        }
-
-        const unseen = baseDeck.cards.filter((card) => !cardStats[card.sourceCardId]);
-        return unseen.length ? unseen : baseDeck.cards;
-    }, [recommendedBand, baseDeck, cardStats]);
-
-    const themeRows = useMemo(() => {
-        const filterIds = AVAILABLE_THEME_FILTERS.map((item) => item.id).filter((id) => id !== 'all');
-        const rows = filterIds
-            .map((themeId) => {
-                const cards = libraryCards.filter((card) => card.themeId === themeId);
-                if (!cards.length) {
-                    return null;
-                }
-
-                let mastered = 0;
-                let due = 0;
-                const levelCount = {};
-
-                cards.forEach((card) => {
-                    const stat = cardStats[card.sourceCardId];
-                    const level = levelFromFrequencyTag(card.frequencyTag);
-                    levelCount[level] = (levelCount[level] || 0) + 1;
-                    if (!stat) {
-                        return;
-                    }
-                    if (stat.lastRating === 'good' || stat.lastRating === 'easy') {
-                        mastered += 1;
-                    }
-                    if (isCardDue(stat)) {
-                        due += 1;
-                    }
-                });
-
-                return {
-                    id: themeId,
-                    label: getThemeLabel(themeId),
-                    total: cards.length,
-                    mastered,
-                    due,
-                    level: Object.entries(levelCount).sort((a, b) => b[1] - a[1])[0]?.[0] || 'A1',
-                    cards,
-                };
-            })
-            .filter(Boolean)
-            .sort((a, b) => b.total - a.total);
-
-        return rows.slice(0, 8);
-    }, [libraryCards, cardStats]);
-
-    const safeThemeId = useMemo(() => {
-        if (themeRows.some((item) => item.id === selectedThemeId)) {
-            return selectedThemeId;
-        }
-        return themeRows[0]?.id || 'general';
-    }, [themeRows, selectedThemeId]);
-
-    useEffect(() => {
-        if (safeThemeId !== selectedThemeId) {
-            setSelectedThemeId(safeThemeId);
-        }
-    }, [safeThemeId, selectedThemeId]);
-
-    const masteredTotal = useMemo(
-        () => Object.values(cardStats).filter((s) => s.lastRating === 'good' || s.lastRating === 'easy').length,
-        [cardStats]
-    );
-
-    const globalProgressPercent = useMemo(
-        () => (libraryCards.length ? Math.round((masteredTotal / libraryCards.length) * 100) : 0),
-        [masteredTotal, libraryCards.length]
-    );
-
-    const sessionHistory = Array.isArray(progress.sessionHistory) ? progress.sessionHistory : [];
-    const recentSessions = useMemo(() => sessionHistory.slice(-5), [sessionHistory]);
-    const recentSuccessRate = useMemo(() => {
-        if (!recentSessions.length) {
-            return 0.7;
-        }
-
-        const total = recentSessions.reduce((sum, session) => sum + (session.completionRate || 0), 0);
-        return Math.max(0, Math.min(1, total / recentSessions.length / 100));
-    }, [recentSessions]);
-
-    const reviewedLastWeek = useMemo(() => {
-        const now = Date.now();
-        const weekAgo = now - 7 * 86400000;
-        return sessionHistory
-            .filter((session) => new Date(session.reviewedAt || session.completedAt || 0).getTime() >= weekAgo)
-            .reduce((sum, session) => sum + (session.reviewedCards || 0), 0);
-    }, [sessionHistory]);
-
-    const learningCurve = useMemo(() => {
-        const now = new Date();
-        const formatterShort = new Intl.DateTimeFormat('cs-CZ', { weekday: 'short' });
-        return Array.from({ length: 7 }, (_, index) => {
-            const date = new Date(now);
-            date.setDate(now.getDate() - (6 - index));
-            const day = toDayKey(date.toISOString());
-
-            const sessionsForDay = sessionHistory.filter((session) => toDayKey(session.reviewedAt || session.completedAt || '') === day);
-            const value = sessionsForDay.reduce(
-                (sum, session) => sum + (session.reviewedCards || 0) * ((session.completionRate || 0) / 100),
-                0
-            );
-
-            return {
-                day,
-                dayLabel: date.toLocaleDateString('cs-CZ', { day: 'numeric', month: 'numeric' }),
-                shortDay: formatterShort.format(date).replace('.', ''),
-                value: Number(value.toFixed(1)),
-            };
-        });
-    }, [sessionHistory]);
-
-    const learningStage = useMemo(
-        () =>
-            buildLearningStage({
-                masteredRatio: libraryCards.length ? masteredTotal / libraryCards.length : 0,
-                sessionsCompleted: progress.sessionsCompleted || 0,
-                streakDays: progress.streakDays || 0,
-                recentSuccessRate,
-            }),
-        [libraryCards.length, masteredTotal, progress.sessionsCompleted, progress.streakDays, recentSuccessRate]
-    );
-
-    const hasFatigue = recentSuccessRate < 0.62 && dueCards.length > 0;
-    const dailyGoal = hasFatigue ? 20 : 30;
-    const dailyReviewed = useMemo(() => {
-        const todayKey = toDayKey(new Date().toISOString());
-        return sessionHistory
-            .filter((session) => toDayKey(session.reviewedAt || session.completedAt || '') === todayKey)
-            .reduce((sum, session) => sum + (session.reviewedCards || 0), 0);
-    }, [sessionHistory]);
-
-    const heroMeta = [
-        { label: 'série', value: `${progress.streakDays || 0} dní`, icon: Flame },
-        { label: 'naposledy', value: formatLastStudied(progress.lastStudiedAt), icon: RotateCcw },
-        { label: 'celkem', value: `${progress.cardsReviewed || 0} karet`, icon: BookOpen },
-    ];
-
-    const homeSummary = useMemo(() => {
-        if (dueCards.length) {
-            return {
-                title: `Dnes čeká ${dueCards.length} slov`,
-                subtitle: hasFatigue
-                    ? 'Nejdřív krátký reset: minimum nových slov, víc klidného opakování.'
-                    : 'Stačí pár minut a vrátíš to, co se ztrácí.',
-                primaryLabel: 'Spustit opakování',
-                secondaryLabel: 'Vybrat téma',
-            };
-        }
-
-        if (recommendedBand) {
-            return {
-                title: `Pokračuj v ${recommendedBand.lesson.title}`,
-                subtitle: `${learningStage.title}: jeden jasný další krok v hlavní cestě.`,
-                primaryLabel: `Otevřít ${recommendedBand.lesson.title}`,
-                secondaryLabel: 'Vybrat téma',
-            };
-        }
-
-        return {
-            title: 'Začni prvním blokem',
-            subtitle: 'První malý krok bez rozptylování.',
-            primaryLabel: 'Začít',
-            secondaryLabel: 'Vybrat téma',
-        };
-    }, [dueCards.length, hasFatigue, recommendedBand, learningStage.title]);
-
-    const quickActions = useMemo(() => {
-        const hasDueCards = dueCards.length > 0;
-
-        return [
-            {
-                id: 'quick-review',
-                title: '5 minut',
-                description: hasDueCards ? 'Splatná slovíčka právě teď.' : 'Lehký mix na zahřátí.',
-                meta: `${Math.min(hasDueCards ? dueCards.length : nextStepCards.length, hasFatigue ? 6 : 8)} slov`,
-                icon: Clock3,
-                kind: hasDueCards ? 'review' : 'fresh',
-                size: hasFatigue ? 6 : 8,
-            },
-            {
-                id: 'focus-review',
-                title: 'Fokus',
-                description: hasDueCards ? `Další okno se vrací ${nextDueLabel}.` : 'O něco delší blok.',
-                meta: `${Math.min(hasDueCards ? dueCards.length : nextStepCards.length, hasDueCards ? (hasFatigue ? 12 : 16) : 12)} slov`,
-                icon: RotateCcw,
-                kind: hasDueCards ? 'review' : 'fresh',
-                size: hasDueCards ? (hasFatigue ? 12 : 16) : 12,
-            },
-            {
-                id: 'next-step',
-                title: 'Nových 8',
-                description: recommendedBand ? recommendedBand.lesson.title : 'Hlavní cesta.',
-                meta: 'progress',
-                icon: Sparkles,
-                kind: 'fresh',
-                size: hasFatigue ? 6 : 8,
-            },
-        ];
-    }, [dueCards.length, nextStepCards.length, recommendedBand, nextDueLabel, hasFatigue]);
-
-    const startToday = () => {
-        if (dueCards.length) {
-            setSessionLesson(
-                buildReviewLesson(
-                    dueCards,
-                    Math.min(12, dueCards.length),
-                    'Dnešní opakování',
-                    'To nejdůležitější na dnešek.'
-                )
-            );
-            return;
-        }
-
-        if (recommendedBand) {
-            setSessionLesson(recommendedBand.lesson);
-            return;
-        }
-
-        if (baseDeck) {
-            setSessionLesson(buildFreshLesson(baseDeck.cards, 8, 'Lehký start', 'Prvních pár slov bez tlaku.'));
-        }
+  // Listen for system theme changes
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = () => {
+      if (theme === 'system') {
+        applyTheme('system');
+      }
     };
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, [theme]);
 
-    const startNextStep = () => {
-        if (!nextStepCards.length) {
-            return;
-        }
+  const cycleTheme = useCallback(() => {
+    vibrate(10);
+    setTheme(prev => {
+      const idx = THEME_CYCLE.indexOf(prev);
+      return THEME_CYCLE[(idx + 1) % THEME_CYCLE.length];
+    });
+  }, []);
 
-        setSessionLesson(
-            buildFreshLesson(
-                nextStepCards,
-                Math.min(8, nextStepCards.length),
-                recommendedBand ? `Nových 8 · ${recommendedBand.lesson.title}` : 'Dalších 8 slov',
-                'Krátký krok dopředu v hlavní cestě.'
-            )
-        );
-    };
+  useEffect(() => {
+    saveProgress(progress);
+  }, [progress]);
 
-    const startThemePath = (themeId) => {
-        const row = themeRows.find((item) => item.id === themeId);
-        if (!row || !row.cards.length) {
-            return;
-        }
+  // Check for newly unlocked achievements
+  useEffect(() => {
+    if (newAchievements.length > 0) {
+      const achievement = newAchievements[0];
+      setShowAchievementToast(achievement);
+      vibrate([30, 50, 30, 50, 100]);
 
-        const dueInTheme = row.cards
-            .filter((card) => {
-                const stat = cardStats[card.sourceCardId];
-                return stat ? isCardDue(stat) : false;
-            });
+      const timer = setTimeout(() => {
+        setShowAchievementToast(null);
+        setNewAchievements(prev => prev.slice(1));
+      }, 4000);
 
-        if (dueInTheme.length) {
-            setSessionLesson(
-                buildReviewLesson(
-                    dueInTheme,
-                    Math.min(12, dueInTheme.length),
-                    `Téma: ${row.label}`,
-                    'Nejdřív opakování ve vybraném tématu.'
-                )
-            );
-            return;
-        }
+      return () => clearTimeout(timer);
+    }
+  }, [newAchievements]);
 
-        setSessionLesson(
-            buildFreshLesson(
-                row.cards,
-                Math.min(10, row.cards.length),
-                `Téma: ${row.label}`,
-                'Nová slovíčka jen z vybraného tématu.',
-                'theme'
-            )
-        );
-    };
+  useEffect(() => {
+    Promise.all([
+      fetch('/data/slovicka-lite.json').then(r => r.json()),
+      fetch('/data/dental-vocabulary.json').then(r => r.json()).catch(() => [])
+    ])
+      .then(([generalData, dentalData]) => {
+        const en5000 = generalData.filter(c => c.frequencyTag === 'EN-5000').slice(0, 5000);
+        setCards(en5000.map((c, i) => normalizeCard(c, i)));
+        setDentalCards(dentalData.map((c, i) => normalizeCard(c, i)));
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
 
-    const handleStartQuickAction = (action) => {
-        if (action.kind === 'review' && dueCards.length) {
-            setSessionLesson(buildReviewLesson(dueCards, Math.min(action.size, dueCards.length), action.title, 'Krátké řízené opakování.'));
-            return;
-        }
+  const handleOnboardingComplete = (dailyGoal) => {
+    localStorage.setItem('gaba-onboarded', 'true');
+    setShowOnboarding(false);
+  };
 
-        if (nextStepCards.length) {
-            setSessionLesson(
-                buildFreshLesson(nextStepCards, Math.min(action.size, nextStepCards.length), action.title, 'Krátká mobilní session bez rušení.')
-            );
-            return;
-        }
+  const handleStartSession = (type, count = 10) => {
+    if (!cards.length && type !== 'dental') return;
 
-        if (baseDeck) {
-            setSessionLesson(buildFreshLesson(baseDeck.cards, Math.min(action.size, baseDeck.cards.length), action.title, 'Krátká mobilní session bez rušení.'));
-        }
-    };
+    let sessionCards;
+    let title = '';
 
-    const handleSessionComplete = (lesson, summary) => {
-        setProgress((currentProgress) => {
-            const streakUpdate = computeStreak(currentProgress.lastStudiedAt);
-            const shouldMarkCompleted = lesson.source === 'band';
-            const nextCompleted = shouldMarkCompleted
-                ? Array.from(new Set([...currentProgress.completedLessonIds, lesson.id]))
-                : currentProgress.completedLessonIds;
+    if (type === 'dental') {
+      sessionCards = sampleItems(dentalCards, count);
+      title = '🦷 Zubní slovíčka';
+    } else if (type === 'review') {
+      const due = cards.filter(c => {
+        const stat = progress.cardStats[c.id];
+        return stat && isCardDue(normalizeCardStat(c.id, stat));
+      });
+      sessionCards = sampleItems(due.length ? due : cards, count);
+      title = 'Opakování';
+    } else {
+      const notLearned = cards.filter(c => !progress.cardStats[c.id]);
+      sessionCards = sampleItems(notLearned.length ? notLearned : cards, count);
+      title = 'Nová slovíčka';
+    }
 
-            return {
-                ...currentProgress,
-                completedLessonIds: nextCompleted,
-                sessionsCompleted: currentProgress.sessionsCompleted + 1,
-                cardsReviewed: currentProgress.cardsReviewed + summary.reviewedCards,
-                masteredCards: currentProgress.masteredCards + summary.goodCount + summary.easyCount,
-                cardStats: buildUpdatedCardStats(currentProgress.cardStats || {}, summary.cardResults),
-                sessionHistory: appendSessionHistory(currentProgress.sessionHistory, {
-                    lessonId: lesson.id,
-                    lessonTitle: lesson.title,
-                    reviewedCards: summary.reviewedCards,
-                    completionRate: summary.completionRate,
-                    againCount: summary.againCount,
-                    hardCount: summary.hardCount,
-                    goodCount: summary.goodCount,
-                    easyCount: summary.easyCount,
-                    reviewedAt: new Date().toISOString(),
-                }),
-                streakDays:
-                    streakUpdate === 'increment'
-                        ? currentProgress.streakDays + 1
-                        : streakUpdate === null
-                            ? currentProgress.streakDays || 1
-                            : streakUpdate,
-                lastLessonId: lesson.id,
-                lastLessonTitle: lesson.title,
-                lastStudiedAt: new Date().toISOString(),
-            };
-        });
+    setSession({
+      id: `session-${Date.now()}`,
+      title,
+      cards: sessionCards
+    });
+  };
 
-        const repeatCount = summary.againCount + summary.hardCount;
-        setNotice({
-            type: 'success',
-            message: repeatCount > 0 ? `Session hotova. ${repeatCount} slov k zopakování.` : 'Skvělá práce. Session dokončena čistě.',
-        });
-    };
+  const [sessionResult, setSessionResult] = useState(null);
 
-    const handleResetProgress = () => {
-        setProgress(DEFAULT_PROGRESS);
-        localStorage.removeItem(PROGRESS_STORAGE_KEY);
-        setNotice({ type: 'success', message: 'Veškerý postup byl vymazán.' });
-    };
+  const handleSessionComplete = (result) => {
+    const xpGained = result.correct * 10;
+    const streakBonus = result.total === result.correct ? 5 : 0;
+    const isPerfect = result.correct === result.total;
 
-    const handleMarkCardKnown = (cardId, known) => {
-        const card = libraryCardMap.get(cardId);
-        if (!card) {
-            return;
-        }
+    setProgress(p => {
+      const updatedProgress = {
+        ...p,
+        xp: p.xp + xpGained + streakBonus,
+        cardsLearned: p.cardsLearned + result.correct,
+        lessonsCompleted: p.lessonsCompleted + 1,
+        streak: p.streak + streakBonus,
+        lastStudyDate: new Date().toISOString().split('T')[0],
+        perfectLessons: (p.perfectLessons || 0) + (isPerfect ? 1 : 0),
+      };
 
-        const reviewedAt = new Date().toISOString();
+      // Check for new achievements
+      const unlocked = checkAchievements(updatedProgress);
+      if (unlocked.length > 0) {
+        const newUnlockedIds = unlocked.map(a => a.id);
+        updatedProgress.achievements = [...(p.achievements || []), ...newUnlockedIds];
+        updatedProgress.xp += unlocked.reduce((sum, a) => sum + a.xpReward, 0);
+        setNewAchievements(unlocked);
+      }
 
-        setProgress((currentProgress) => {
-            const currentStats = currentProgress.cardStats || {};
-            const previous = normalizeCardStat(cardId, currentStats[cardId]);
-            const next = scheduleCardReview(previous, known ? 'easy' : 'again', reviewedAt);
+      return updatedProgress;
+    });
 
-            return {
-                ...currentProgress,
-                cardStats: {
-                    ...currentStats,
-                    [cardId]: {
-                        ...next,
-                        en: card.en || previous.en,
-                        cz: card.cz || previous.cz,
-                        lessonId: previous.lessonId || 'library',
-                        lessonTitle: previous.lessonTitle || 'Slovní zásoba',
-                    },
-                },
-            };
-        });
+    setSessionResult(result);
+  };
 
-        setNotice({
-            type: 'success',
-            message: known ? `Označeno jako umím: ${card.en}` : `Vráceno k procvičení: ${card.en}`,
-        });
-    };
+  const handleContinue = () => {
+    setSessionResult(null);
+    setSession(null);
+  };
 
-    const appTitle =
-        activeTab === 'today'
-            ? 'Dnes'
-            : activeTab === 'lessons'
-                ? 'Lekce'
-                : activeTab === 'vocabulary'
-                    ? 'Slovník'
-                    : 'Profil';
+  const handleReset = () => {
+    if (confirm('Opravdu chceš vymazat veškerý postup? Tato akce je nevratná.')) {
+      setProgress(DEFAULT_PROGRESS);
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  };
 
+  const handleClaimAchievement = (achievementId) => {
+    // Achievements are auto-claimed when conditions are met
+  };
+
+  if (showOnboarding) {
+    return <Onboarding onComplete={handleOnboardingComplete} />;
+  }
+
+  if (loading) {
     return (
-        <div className="web-stage">
-            <div className="app-shell">
-                <SideNav activeTab={activeTab} onTabChange={setActiveTab} streakDays={progress.streakDays} />
-
-                <div className="app-content">
-                    <AnimatePresence mode="wait">
-                        {sessionLesson ? (
-                            <motion.div
-                                key={sessionLesson.id}
-                                className="app-session-layer"
-                                initial={{ opacity: 0, scale: 1.02 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                exit={{ opacity: 0, scale: 1.02 }}
-                                transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-                            >
-                                <StudySession
-                                    lesson={sessionLesson}
-                                    onClose={() => setSessionLesson(null)}
-                                    onComplete={(summary) => handleSessionComplete(sessionLesson, summary)}
-                                />
-                            </motion.div>
-                        ) : (
-                            <motion.div
-                                key={activeTab}
-                                className="app-screen"
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: -10 }}
-                                transition={{ duration: 0.2 }}
-                            >
-                                <header className="topbar">
-                                    <div className="brand">
-                                        <div className="brand__mark">
-                                            <GraduationCap size={20} strokeWidth={2.5} />
-                                        </div>
-                                        <div>
-                                            <span className="eyebrow">Gaba English</span>
-                                            <strong className="brand__title">{appTitle}</strong>
-                                        </div>
-                                    </div>
-
-                                    <div className="topbar__actions">
-                                        <div className="streak-badge">
-                                            <Flame size={14} strokeWidth={2.5} />
-                                            {progress.streakDays || 0}
-                                        </div>
-                                    </div>
-                                </header>
-
-                                <main className="content-scroll">
-                                    <AnimatePresence>{notice ? <NoticeToast notice={notice} /> : null}</AnimatePresence>
-
-                                    {activeTab === 'today' ? (
-                                        <>
-                                            {libraryStatus === 'loading' ? <LoadingState /> : null}
-                                            {libraryStatus === 'error' ? <ErrorState onRetry={() => setReloadToken((value) => value + 1)} /> : null}
-                                            {libraryStatus === 'ready' && !baseDeck ? <EmptyState /> : null}
-
-                                            {libraryStatus === 'ready' && baseDeck ? (
-                                                <div className="home-layout">
-                                                    <StartHereCard
-                                                        title={homeSummary.title}
-                                                        subtitle={homeSummary.subtitle}
-                                                        onPrimary={startToday}
-                                                        onSecondary={() => startThemePath(safeThemeId)}
-                                                        secondaryLabel={homeSummary.secondaryLabel}
-                                                        streakDays={progress.streakDays}
-                                                        dailyReviewed={dailyReviewed}
-                                                        dailyGoal={dailyGoal}
-                                                    />
-
-                                                    <ThemePathsCard
-                                                        themes={themeRows}
-                                                        selectedThemeId={safeThemeId}
-                                                        onSelectTheme={setSelectedThemeId}
-                                                        onStartTheme={startThemePath}
-                                                    />
-
-                                                    <LearningCurveCard
-                                                        stage={learningStage}
-                                                        curvePoints={learningCurve}
-                                                        recentSuccessRate={recentSuccessRate}
-                                                        reviewedLastWeek={reviewedLastWeek}
-                                                    />
-                                                </div>
-                                            ) : null}
-                                        </>
-                                    ) : null}
-
-                                    {activeTab === 'lessons' ? (
-                                        <LessonsScreen themes={themeRows} onStartTheme={startThemePath} />
-                                    ) : null}
-
-                                    {activeTab === 'vocabulary' ? (
-                                        <VocabularyList cards={libraryCards} cardStats={cardStats} onMarkCardKnown={handleMarkCardKnown} />
-                                    ) : null}
-
-                                    {activeTab === 'profile' ? (
-                                        <Settings
-                                            progress={progress}
-                                            onResetProgress={handleResetProgress}
-                                            theme={theme}
-                                            setTheme={setTheme}
-                                            canInstall={canInstall}
-                                            isInstalled={isInstalled}
-                                            isIos={isIos}
-                                            onInstall={install}
-                                        />
-                                    ) : null}
-                                </main>
-
-                                <MobileTabBar activeTab={activeTab} onTabChange={setActiveTab} />
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-                </div>
-            </div>
+      <div className="app-container">
+        <div className="loading-screen">
+          <motion.div
+            animate={{ rotate: [0, 10, -10, 0] }}
+            transition={{ repeat: Infinity, duration: 1.5 }}
+            className="loading-screen__icon"
+            aria-hidden="true"
+          >
+            📚
+          </motion.div>
+          <div className="loading-screen__text" role="status">Načítám lekce...</div>
         </div>
+      </div>
     );
+  }
+
+  return (
+    <div className="app-container">
+      {/* Skip to content */}
+      <a href="#main-content" className="skip-link">Přeskočit na obsah</a>
+
+      <AnimatePresence>
+        {session && !sessionResult && (
+          <motion.div
+            key="quiz"
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1000, background: 'var(--bg)' }}
+          >
+            <QuizScreen
+              session={session}
+              onComplete={handleSessionComplete}
+              onExit={() => setSession(null)}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {sessionResult && (
+          <motion.div
+            key="result"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1000, background: 'var(--bg)' }}
+          >
+            <SessionComplete
+              result={sessionResult}
+              onContinue={handleContinue}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence mode="wait">
+        {activeTab === 'home' && (
+          <motion.div
+            key="home"
+            initial={{ opacity: 0, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 10 }}
+            style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
+          >
+            <HomeScreen
+              progress={progress}
+              cards={cards}
+              onStartSession={handleStartSession}
+            />
+          </motion.div>
+        )}
+
+        {activeTab === 'vocabulary' && (
+          <motion.div
+            key="vocabulary"
+            initial={{ opacity: 0, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 10 }}
+            style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
+          >
+            <VocabularyScreen
+              cards={cards}
+              progress={progress}
+              onPlayEN={(text) => speak(text, 'en')}
+            />
+          </motion.div>
+        )}
+
+        {activeTab === 'achievements' && (
+          <motion.div
+            key="achievements"
+            initial={{ opacity: 0, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 10 }}
+            style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
+          >
+            <AchievementsScreen
+              progress={progress}
+              onClaimAchievement={handleClaimAchievement}
+            />
+          </motion.div>
+        )}
+
+        {activeTab === 'profile' && (
+          <motion.div
+            key="profile"
+            initial={{ opacity: 0, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 10 }}
+            style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
+          >
+            <ProfileScreen
+              progress={progress}
+              onReset={handleReset}
+              theme={theme}
+              onCycleTheme={cycleTheme}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Achievement Toast Notification */}
+      <AnimatePresence>
+        {showAchievementToast && (
+          <motion.div
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            transition={{ type: "spring", bounce: 0.3 }}
+            className="achievement-toast"
+          >
+            <div
+              className="achievement-toast__icon"
+              style={{ background: showAchievementToast.color }}
+            >
+              <Trophy size={24} color="#000" />
+            </div>
+            <div className="achievement-toast__content">
+              <div className="achievement-toast__title">
+                🎉 Odznak odemčen!
+              </div>
+              <div className="achievement-toast__description">
+                {showAchievementToast.title}
+              </div>
+              <div className="achievement-toast__xp">+{showAchievementToast.xpReward} XP</div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <nav className="tab-bar" role="tablist" aria-label="Hlavní navigace">
+        <button
+          className={`tab-item ${activeTab === 'home' ? 'is-active' : ''}`}
+          onClick={() => {
+            if (activeTab !== 'home') vibrate(10);
+            setActiveTab('home');
+          }}
+          role="tab"
+          aria-selected={activeTab === 'home'}
+          aria-controls="main-content"
+          id="tab-home"
+        >
+          <Home aria-hidden="true" />
+          <span>Home</span>
+        </button>
+        <button
+          className={`tab-item ${activeTab === 'vocabulary' ? 'is-active' : ''}`}
+          onClick={() => {
+            if (activeTab !== 'vocabulary') vibrate(10);
+            setActiveTab('vocabulary');
+          }}
+          role="tab"
+          aria-selected={activeTab === 'vocabulary'}
+          aria-controls="main-content"
+          id="tab-vocabulary"
+        >
+          <BookOpen aria-hidden="true" />
+          <span>Slovíčka</span>
+        </button>
+        <button
+          className={`tab-item ${activeTab === 'achievements' ? 'is-active' : ''}`}
+          onClick={() => {
+            if (activeTab !== 'achievements') vibrate(10);
+            setActiveTab('achievements');
+          }}
+          role="tab"
+          aria-selected={activeTab === 'achievements'}
+          aria-controls="main-content"
+          id="tab-achievements"
+        >
+          <Award aria-hidden="true" />
+          <span>Ocenení</span>
+        </button>
+        <button
+          className={`tab-item ${activeTab === 'profile' ? 'is-active' : ''}`}
+          onClick={() => {
+            if (activeTab !== 'profile') vibrate(10);
+            setActiveTab('profile');
+          }}
+          role="tab"
+          aria-selected={activeTab === 'profile'}
+          aria-controls="main-content"
+          id="tab-profile"
+        >
+          <User aria-hidden="true" />
+          <span>Profil</span>
+        </button>
+      </nav>
+    </div>
+  );
 }
 
 export default App;

@@ -3,21 +3,43 @@
 
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#16616d" />
-    <meta name="description" content="Mobilní výuková aplikace pro anglická slovíčka se spaced repetition." />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#32D74B" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+    <meta name="description" content="Moderní mobilní aplikace pro učení anglických slovíček se spaced repetition systémem. Nauč se anglicky zábavně a efektivně." />
+    <meta name="keywords" content="angličtina, slovíčka, učení, spaced repetition, flashcards, jazyky, vzdělávání" />
+    <meta name="author" content="Gaba" />
+    
+    <!-- PWA Meta Tags -->
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Gaba" />
+    <meta name="application-name" content="Gaba" />
+    <meta name="msapplication-TileColor" content="#32D74B" />
+    <meta name="msapplication-tap-highlight" content="no" />
+    
+    <!-- Favicon & Icons -->
     <link rel="manifest" href="/manifest.json" />
-    <link rel="icon" href="/icons/icon-192.png" type="image/png" />
-    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
-    <title>Gaba English Lab</title>
+    <link rel="icon" href="/icons/icon-192.png" type="image/png" sizes="192x192" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" sizes="180x180" />
+    <link rel="icon" href="/icons/icon-512.png" type="image/png" sizes="512x512" />
+    
+    <!-- Preconnect to Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    
+    <title>Gaba — Uč se anglicky chytře</title>
 </head>
 
 <body>
     <div id="root"></div>
+    <noscript>
+        <div style="padding: 24px; text-align: center; font-family: system-ui, sans-serif;">
+            <h1 style="color: #1C1C1E; margin-bottom: 8px;">Gaba</h1>
+            <p style="color: #6B6B72;">Pro spuštění aplikace je potřeba povolit JavaScript.</p>
+        </div>
+    </noscript>
     <script type="module" src="/src/main.jsx"></script>
 </body>
 
